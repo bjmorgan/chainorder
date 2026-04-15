@@ -35,3 +35,45 @@ def test_chain_fft_perfect_ofof_peaks_at_period_2():
     k = N // 2
     # Mean is 1/2 so DC = 1/2. At k=N/2, pattern is [0,1,0,1,0,1] so FFT gives 1/2.
     np.testing.assert_allclose(np.abs(fft[..., k]), 0.5, atol=1e-12)
+
+
+def test_motif_counts_perfect_oof_window_3():
+    """Perfect OOF chain: all length-3 windows are cyclic class (0, 0, 1),
+    total N per chain."""
+    N = 6
+    arr = perfect_oof_chain(N, phase=2)
+    counts = order_params.motif_counts(arr, window_length=3)
+    # One F in every triplet -> canonical (0, 0, 1)
+    assert (0, 0, 1) in counts
+    np.testing.assert_array_equal(counts[(0, 0, 1)], np.full((N, N), N))
+    # Other classes should be absent or zero
+    for cls in [(0, 0, 0), (0, 1, 1), (1, 1, 1)]:
+        assert cls not in counts or np.all(counts[cls] == 0)
+
+
+def test_motif_counts_perfect_ofof_window_2():
+    """Perfect OFOF chain: all length-2 windows are (0, 1); total N per chain."""
+    N = 6
+    arr = perfect_ofof_chain(N)
+    counts = order_params.motif_counts(arr, window_length=2)
+    assert (0, 1) in counts
+    np.testing.assert_array_equal(counts[(0, 1)], np.full((N, N), N))
+
+
+def test_motif_counts_all_zero_chain():
+    """All-O chain: all length-3 windows are (0, 0, 0)."""
+    N = 6
+    arr = np.zeros((N, N, N), dtype=int)
+    counts = order_params.motif_counts(arr, window_length=3)
+    assert (0, 0, 0) in counts
+    np.testing.assert_array_equal(counts[(0, 0, 0)], np.full((N, N), N))
+
+
+def test_motif_counts_total_equals_N():
+    """Sum of counts across classes equals N per chain, regardless of input."""
+    N = 6
+    rng = np.random.default_rng(42)
+    arr = rng.integers(0, 2, size=(N, N, N))
+    counts = order_params.motif_counts(arr, window_length=3)
+    total = sum(counts.values())
+    np.testing.assert_array_equal(total, np.full((N, N), N))
