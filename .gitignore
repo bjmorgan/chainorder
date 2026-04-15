@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+build/
+dist/
+
+# Editor/tool state
+.vscode/
+.idea/
+
+# Design specs and plans are local dev notes (per project convention)
+docs/superpowers/

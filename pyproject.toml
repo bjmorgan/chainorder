@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chainorder"
+version = "0.1.0"
+description = "Chain decomposition and order parameters for ReO3-type anion ordering"
+requires-python = ">=3.11"
+dependencies = ["numpy", "ase"]
+
+[project.optional-dependencies]
+dev = ["pytest", "mypy"]
+
+[tool.setuptools.packages.find]
+include = ["chainorder*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
