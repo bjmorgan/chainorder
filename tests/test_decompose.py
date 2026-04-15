@@ -93,3 +93,58 @@ def test_decompose_raises_on_non_orthorhombic_cell():
 
     with pytest.raises(ValueError, match="not orthorhombic"):
         decompose(atoms, N=N)
+
+
+def test_decompose_caches_indices_across_calls(monkeypatch):
+    """Calling decompose twice with the same positions/N/origin should only
+    run _build_indices once."""
+    import importlib
+    dm = importlib.import_module("chainorder.decompose")
+
+    call_count = {"n": 0}
+    original_build = dm._build_indices
+
+    def counting_build(*args, **kwargs):
+        call_count["n"] += 1
+        return original_build(*args, **kwargs)
+
+    monkeypatch.setattr(dm, "_build_indices", counting_build)
+    # Clear any existing cache (from prior tests in the same session)
+    dm._indices_cached.cache_clear()
+
+    N = 3
+    ax_in = perfect_oof_chain(N, phase=2)
+    ay_in = perfect_oof_chain(N, phase=2)
+    az_in = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax_in, ay_in, az_in)
+
+    decompose(atoms, N=N)
+    decompose(atoms, N=N)
+    decompose(atoms, N=N)
+
+    assert call_count["n"] == 1, f"Expected 1 build, got {call_count['n']}"
+
+
+def test_decompose_rebuilds_when_n_changes(monkeypatch):
+    """Different N should cause a rebuild (cache miss)."""
+    import importlib
+    dm = importlib.import_module("chainorder.decompose")
+
+    call_count = {"n": 0}
+    original_build = dm._build_indices
+
+    def counting_build(*args, **kwargs):
+        call_count["n"] += 1
+        return original_build(*args, **kwargs)
+
+    monkeypatch.setattr(dm, "_build_indices", counting_build)
+    dm._indices_cached.cache_clear()
+
+    for N in (3, 6):
+        ax_in = perfect_oof_chain(N, phase=2)
+        ay_in = perfect_oof_chain(N, phase=2)
+        az_in = perfect_oof_chain(N, phase=2)
+        atoms = build_nbo2f(N, ax_in, ay_in, az_in)
+        decompose(atoms, N=N)
+
+    assert call_count["n"] == 2
