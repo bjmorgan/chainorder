@@ -152,3 +152,32 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
 
     G: np.ndarray = np.mean(v[None, None] * np.conj(shifted), axis=(2, 3))
     return G
+
+
+def structure_factor(anion_direction: np.ndarray) -> np.ndarray:
+    """Full 3D Fourier transform of a chain occupation array.
+
+    Gives the Fourier amplitude of the flagged-species occupation at every
+    wavevector `(kj, kk, ki) in {0, ..., N-1}^3`, normalised so that a
+    perfect period-p ordering gives `|F| = 1/p` at its peak (consistent
+    with `chain_fft`). `|F|^2` is proportional to the kinematic diffuse
+    scattering intensity at wavevector `(kj, kk, ki) / N` reciprocal lattice
+    units, assuming unit form factor on the flagged species.
+
+    Args:
+        anion_direction: Binary species array along one chain direction
+            (output of `decompose`), shape (N, N, N).
+
+    Returns:
+        Complex array of shape (N, N, N). All three axes are Fourier
+        frequencies; there is no distinguished "chain" axis.
+
+    Notes:
+        Related to `chain_fft` by a further 2D FFT across the chain-plane
+        axes: ``structure_factor(arr)`` equals
+        ``np.fft.fft2(chain_fft(arr), axes=(0, 1)) / N ** 2``. Use
+        `chain_fft` for per-chain analysis; use `structure_factor` for
+        cross-chain / diffuse-scattering analysis.
+    """
+    N = anion_direction.shape[-1]
+    return np.fft.fftn(anion_direction) / N ** 3

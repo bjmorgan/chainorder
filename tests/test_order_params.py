@@ -124,3 +124,30 @@ def test_inter_chain_correlation_raises_when_N_not_divisible_by_3():
     arr = np.zeros((N, N, N), dtype=int)
     with pytest.raises(ValueError, match="divisible by 3"):
         order_params.inter_chain_correlation(arr)
+
+
+def test_structure_factor_perfect_oof_on_axis_peaks():
+    """Uniform perfect OOF: non-zero only along (kj=0, kk=0, ki) with |F|=1/3."""
+    N = 6
+    arr = perfect_oof_chain(N, phase=2)
+    F = order_params.structure_factor(arr)
+    assert F.shape == (N, N, N)
+    # On-axis peaks: DC, period-3, period-3 conjugate
+    np.testing.assert_allclose(np.abs(F[0, 0, 0]), 1.0 / 3.0, atol=1e-12)
+    np.testing.assert_allclose(np.abs(F[0, 0, N // 3]), 1.0 / 3.0, atol=1e-12)
+    np.testing.assert_allclose(np.abs(F[0, 0, 2 * N // 3]), 1.0 / 3.0, atol=1e-12)
+    # Off-axis (kj or kk != 0): zero (chains are phase-locked)
+    mask = np.ones((N, N, N), dtype=bool)
+    mask[0, 0, :] = False
+    np.testing.assert_allclose(F[mask], 0, atol=1e-12)
+
+
+def test_structure_factor_matches_fft2_of_chain_fft():
+    """structure_factor(arr) == fft2(chain_fft(arr), axes=(0, 1)) / N**2."""
+    N = 6
+    rng = np.random.default_rng(123)
+    arr = rng.integers(0, 2, size=(N, N, N))
+    F_direct = order_params.structure_factor(arr)
+    phi = order_params.chain_fft(arr)
+    F_via_chain = np.fft.fft2(phi, axes=(0, 1)) / N ** 2
+    np.testing.assert_allclose(F_direct, F_via_chain, atol=1e-12)
