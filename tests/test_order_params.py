@@ -77,3 +77,23 @@ def test_motif_counts_total_equals_N():
     counts = order_params.motif_counts(arr, window_length=3)
     total = sum(counts.values())
     np.testing.assert_array_equal(total, np.full((N, N), N))
+
+
+def test_along_chain_correlation_perfect_oof():
+    """Perfect OOF: g(0) = 2/9, g(3) = 2/9 (peaks), g(1) = g(2) = -1/9 (troughs)."""
+    N = 6
+    arr = perfect_oof_chain(N, phase=2)
+    g = order_params.along_chain_correlation(arr)
+    assert g.shape == (N,)
+    np.testing.assert_allclose(g[0], 2.0 / 9.0, atol=1e-12)
+    np.testing.assert_allclose(g[3], 2.0 / 9.0, atol=1e-12)
+    np.testing.assert_allclose(g[1], -1.0 / 9.0, atol=1e-12)
+    np.testing.assert_allclose(g[2], -1.0 / 9.0, atol=1e-12)
+
+
+def test_along_chain_correlation_all_zero():
+    """All-O: g(r) = 0 for all r (mean is 0, so no oscillation)."""
+    N = 6
+    arr = np.zeros((N, N, N), dtype=int)
+    g = order_params.along_chain_correlation(arr)
+    np.testing.assert_allclose(g, 0, atol=1e-12)

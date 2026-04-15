@@ -80,3 +80,31 @@ def motif_counts(
         mask = (canonical_encoded == code)
         counts[canon_tuple[int(code)]] = mask.sum(axis=-1).astype(np.int64)
     return counts
+
+
+def along_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
+    """Pair correlation g(r) along chains, averaged over all chains of one direction.
+
+    g(r) = <s_i * s_{i+r}> - <s>^2, where the inner average is over position i
+    along the chain and over all chains. Subtracting <s>^2 removes the mean-
+    density contribution so g(r) oscillates around zero. Wrap-around is
+    periodic.
+
+    Args:
+        anion_direction: Binary species array along one chain direction,
+            shape (N, N, N).
+
+    Returns:
+        g(r) for r = 0, 1, ..., N-1, shape (N,).
+    """
+    N = anion_direction.shape[-1]
+    s_mean = float(anion_direction.mean())
+
+    # Vectorised: build a (N_r, N, N, N) stack of r-shifted arrays then average.
+    # Memory cost is O(N^4); trivial for typical N (<=24).
+    r = np.arange(N)
+    shift_idx = (np.arange(N)[None, :] + r[:, None]) % N               # (N_r, N)
+    shifted = anion_direction[..., shift_idx]                          # (N, N, N_r, N)
+    product = anion_direction[..., None, :] * shifted                  # (N, N, N_r, N)
+    g = product.mean(axis=(0, 1, 3)) - s_mean ** 2                     # (N_r,)
+    return g
