@@ -25,11 +25,12 @@ def decompose(
 
     Args:
         atoms: On-lattice ASE `Atoms` supercell with anions at ideal edge
-            midpoints of a simple-cubic Nb sublattice.
+            midpoints of a simple-cubic cation sublattice.
         N: Supercell size along each axis (cubic N*N*N).
-        origin: Fractional coordinate of the Nb sublattice origin. Default
-            `(0, 0, 0)` assumes Nb at the corners of the supercell. Pass
-            `(0.5, 0.5, 0.5)` if Nb sits at the body centre.
+        origin: Fractional coordinate of the cation sublattice origin.
+            Default `(0, 0, 0)` assumes the cation sits at the corners of
+            the supercell. Pass `(0.5, 0.5, 0.5)` if the cation sits at
+            the body centre.
         species: Element symbol to flag as 1 in the output arrays. Default
             `"F"`; all other anion species are flagged 0.
 
@@ -74,7 +75,7 @@ def _build_indices(
         positions: Cartesian atom positions in Angstroms, shape (n_atoms, 3).
         cell: Orthorhombic cell matrix in Angstroms, shape (3, 3).
         N: Supercell size per axis.
-        origin: Fractional coordinate of the Nb sublattice origin.
+        origin: Fractional coordinate of the cation sublattice origin.
 
     Returns:
         Integer array of shape (3, N, N, N) mapping (direction, j, k, i) to
@@ -133,17 +134,18 @@ def _build_indices(
         bad = int(np.where(n_half > 1)[0][0])
         raise ValueError(
             f"Atom {bad} at scaled coords {scaled[bad]} has {n_half[bad]} "
-            f"half-integer coordinates; expected 0 (Nb) or 1 (anion)."
+            f"half-integer coordinates; expected 0 (cation) or 1 (anion)."
         )
 
     # Count checks
-    n_nb = int((n_half == 0).sum())
+    n_cation = int((n_half == 0).sum())
     n_anion = int((n_half == 1).sum())
-    expected_nb = N ** 3
+    expected_cation = N ** 3
     expected_anion = 3 * N ** 3
-    if n_nb != expected_nb:
+    if n_cation != expected_cation:
         raise ValueError(
-            f"Wrong Nb count: found {n_nb}, expected {expected_nb} for N={N}."
+            f"Wrong cation count: found {n_cation}, "
+            f"expected {expected_cation} for N={N}."
         )
     if n_anion != expected_anion:
         raise ValueError(
