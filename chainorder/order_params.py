@@ -11,23 +11,11 @@ def chain_fft(anion_direction: np.ndarray) -> np.ndarray:
 
     Returns:
         Complex array of shape (N, N, N). Last axis is the Fourier index
-        k = 0, 1, ..., N-1. Normalised so that a chain with a single F per
-        period-p gives |tilde_s_{N/p}| = 1/p for stoichiometry 1/p.
+        k = 0, 1, ..., N-1. Normalised so that a chain with exactly one
+        flagged atom per period-p gives `|tilde_s_{N/p}| = 1/p`.
     """
     N = anion_direction.shape[-1]
     return np.fft.fft(anion_direction, axis=-1) / N
-
-
-def _canonical_rotation(window: tuple[int, ...]) -> tuple[int, ...]:
-    """Return the lexicographically smallest cyclic rotation of a tuple.
-
-    Args:
-        window: Tuple of values to canonicalise.
-
-    Returns:
-        The rotation of `window` with the smallest lexicographic order.
-    """
-    return min(window[i:] + window[:i] for i in range(len(window)))
 
 
 def motif_counts(
@@ -113,10 +101,10 @@ def along_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
 def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     """Phase correlation between parallel chains, as a function of lateral separation.
 
-    G[dj, dk] = < exp(i * (arg(phi(j, k)) - arg(phi(j + dj, k + dk)))) >
-
-    where phi(j, k) is the Fourier coefficient at k = N / 3 for chain (j, k),
-    and the average is over all (j, k) pairs.
+    `G[da, db] = < exp(i * (arg(phi(a, b)) - arg(phi(a + da, b + db)))) >`,
+    where `phi(a, b)` is the Fourier coefficient at `k = N / 3` for the chain
+    at lateral position `(a, b)` (i.e. the first two indices of the input
+    array), and the average is over all `(a, b)` pairs.
 
     Meaningful only when chains individually show OOF order (|phi| is
     substantial). If chains are disordered, the phases are noise and the
@@ -127,7 +115,7 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
             shape (N, N, N).
 
     Returns:
-        Complex array of shape (N, N). `G[dj, dk]` for dj, dk = 0, ..., N-1.
+        Complex array of shape (N, N). `G[da, db]` for da, db = 0, ..., N-1.
 
     Raises:
         ValueError: If N is not divisible by 3 (no well-defined period-3
@@ -143,15 +131,14 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     phi = chain_fft(anion_direction)[..., N // 3]                      # (N, N)
     v = np.exp(1j * np.angle(phi))                                     # (N, N), unit modulus
 
-    # Build shifted[dj, dk, j, k] = v[(j + dj) % N, (k + dk) % N] via
+    # Build shifted[da, db, a, b] = v[(a + da) % N, (b + db) % N] via
     # broadcast-aware advanced indexing; no Python loops.
     idx = np.arange(N)
-    j_idx = (idx[:, None, None, None] + idx[None, None, :, None]) % N  # (N_dj, 1, N_j, 1)
-    k_idx = (idx[None, :, None, None] + idx[None, None, None, :]) % N  # (1, N_dk, 1, N_k)
-    shifted = v[j_idx, k_idx]                                          # (N, N, N, N)
+    a_idx = (idx[:, None, None, None] + idx[None, None, :, None]) % N  # (N_da, 1, N_a, 1)
+    b_idx = (idx[None, :, None, None] + idx[None, None, None, :]) % N  # (1, N_db, 1, N_b)
+    shifted = v[a_idx, b_idx]                                          # (N, N, N, N)
 
-    G: np.ndarray = np.mean(v[None, None] * np.conj(shifted), axis=(2, 3))
-    return G
+    return np.mean(v[None, None] * np.conj(shifted), axis=(2, 3))
 
 
 def structure_factor(anion_direction: np.ndarray) -> np.ndarray:

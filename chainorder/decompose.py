@@ -58,6 +58,14 @@ def _indices_cached(
     N: int,
     origin: tuple[float, float, float],
 ) -> np.ndarray:
+    """Cache the decomposition map for one ``(positions, cell, N, origin)`` key.
+
+    ``positions`` and ``cell`` are passed as raw bytes so that the key is
+    hashable and compares by full-precision binary content. Single-entry cache
+    (``maxsize=1``) is sufficient for trajectory analysis: repeated calls with
+    identical inputs reuse the cached indices, and the first call after any
+    change rebuilds.
+    """
     positions = np.frombuffer(positions_bytes, dtype=np.float64).reshape(-1, 3)
     cell = np.frombuffer(cell_bytes, dtype=np.float64).reshape(3, 3)
     return _build_indices(positions, cell, N, origin)
