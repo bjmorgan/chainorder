@@ -79,6 +79,44 @@ def test_motif_counts_total_equals_N():
     np.testing.assert_array_equal(total, np.full((N, N), N))
 
 
+def test_motif_counts_cyclic_rotations_collapse():
+    """Three chains with F at positions 0, 1, 2 all canonicalise to (0, 0, 1)."""
+    N = 3
+    arr = np.zeros((N, N, N), dtype=int)
+    arr[0, 0, 0] = 1   # chain (0, 0): [1, 0, 0]
+    arr[0, 1, 1] = 1   # chain (0, 1): [0, 1, 0]
+    arr[0, 2, 2] = 1   # chain (0, 2): [0, 0, 1]
+    counts = order_params.motif_counts(arr, window_length=3)
+    # Each of these chains has one F per period; every window canonicalises
+    # to (0, 0, 1). Per-chain count should be N=3 for each of them.
+    assert (0, 0, 1) in counts
+    assert counts[(0, 0, 1)][0, 0] == N
+    assert counts[(0, 0, 1)][0, 1] == N
+    assert counts[(0, 0, 1)][0, 2] == N
+
+
+def test_motif_counts_per_chain_distinct_for_mixed_patterns():
+    """Mixed OOF/OFOF chains: counts per (j, k) reflect each chain's pattern."""
+    N = 6
+    arr = np.zeros((N, N, N), dtype=int)
+    # j in [0, 3): OOF (F at i ≡ 2 mod 3)
+    for i in range(N):
+        if i % 3 == 2:
+            arr[:3, :, i] = 1
+    # j in [3, 6): OFOF (F at odd i)
+    for i in range(N):
+        if i % 2 == 1:
+            arr[3:, :, i] = 1
+    counts = order_params.motif_counts(arr, window_length=3)
+    # OOF: all N windows are (0, 0, 1); zero of (0, 1, 1).
+    # OFOF chain [0,1,0,1,0,1]: windows (0,1,0) and (1,0,1) alternate, giving
+    # N/2 of each canonical class (0, 0, 1) and (0, 1, 1).
+    np.testing.assert_array_equal(counts[(0, 0, 1)][:3, :], N)
+    np.testing.assert_array_equal(counts[(0, 0, 1)][3:, :], N // 2)
+    np.testing.assert_array_equal(counts[(0, 1, 1)][:3, :], 0)
+    np.testing.assert_array_equal(counts[(0, 1, 1)][3:, :], N // 2)
+
+
 def test_along_chain_correlation_perfect_oof():
     """Perfect OOF: g(0) = 2/9, g(3) = 2/9 (peaks), g(1) = g(2) = -1/9 (troughs)."""
     N = 6

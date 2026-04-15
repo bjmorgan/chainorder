@@ -79,6 +79,23 @@ def test_decompose_raises_on_wrong_cation_count():
         decompose(atoms, N=3)
 
 
+def test_decompose_raises_on_wrong_anion_count():
+    """Structure with correct cation count but wrong anion count should raise.
+
+    Exercises the anion-count check path (the cation check fires first if the
+    cation count is also wrong, as in `test_decompose_raises_on_wrong_cation_count`).
+    """
+    N = 3
+    ax_in = perfect_oof_chain(N, phase=2)
+    ay_in = perfect_oof_chain(N, phase=2)
+    az_in = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax_in, ay_in, az_in)
+    # Remove one anion; cation count (N**3 = 27) stays correct, anion count drops.
+    del atoms[N ** 3 + 5]
+    with pytest.raises(ValueError, match="Wrong anion count"):
+        decompose(atoms, N=N)
+
+
 def test_decompose_raises_on_non_orthorhombic_cell():
     """Triclinic cell should raise ValueError (out of scope for v1)."""
     N = 3
