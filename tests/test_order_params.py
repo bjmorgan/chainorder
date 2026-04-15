@@ -97,3 +97,30 @@ def test_along_chain_correlation_all_zero():
     arr = np.zeros((N, N, N), dtype=int)
     g = order_params.along_chain_correlation(arr)
     np.testing.assert_allclose(g, 0, atol=1e-12)
+
+
+def test_inter_chain_correlation_all_same_phase():
+    """All chains have identical OOF phase -> |G[dj, dk]| = 1 everywhere."""
+    N = 6
+    arr = perfect_oof_chain(N, phase=2)     # every chain has phase 2
+    G = order_params.inter_chain_correlation(arr)
+    assert G.shape == (N, N)
+    np.testing.assert_allclose(np.abs(G), 1.0, atol=1e-12)
+
+
+def test_inter_chain_correlation_zero_lag_is_one():
+    """G[0, 0] = <exp(i * 0)> = 1 always (trivial)."""
+    N = 6
+    rng = np.random.default_rng(0)
+    # Random OOF-like array (not strictly periodic, but OK for G[0,0] test)
+    arr = rng.integers(0, 2, size=(N, N, N))
+    G = order_params.inter_chain_correlation(arr)
+    np.testing.assert_allclose(G[0, 0], 1.0, atol=1e-12)
+
+
+def test_inter_chain_correlation_raises_when_N_not_divisible_by_3():
+    """N=4 has no well-defined period-3 Fourier index."""
+    N = 4
+    arr = np.zeros((N, N, N), dtype=int)
+    with pytest.raises(ValueError, match="divisible by 3"):
+        order_params.inter_chain_correlation(arr)

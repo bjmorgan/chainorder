@@ -108,3 +108,47 @@ def along_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     product = anion_direction[..., None, :] * shifted                  # (N, N, N_r, N)
     g = product.mean(axis=(0, 1, 3)) - s_mean ** 2                     # (N_r,)
     return g
+
+
+def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
+    """Phase correlation between parallel chains, as a function of lateral separation.
+
+    G[dj, dk] = < exp(i * (arg(phi(j, k)) - arg(phi(j + dj, k + dk)))) >
+
+    where phi(j, k) is the Fourier coefficient at k = N / 3 for chain (j, k),
+    and the average is over all (j, k) pairs.
+
+    Meaningful only when chains individually show OOF order (|phi| is
+    substantial). If chains are disordered, the phases are noise and the
+    correlations are uninterpretable.
+
+    Args:
+        anion_direction: Binary species array along one chain direction,
+            shape (N, N, N).
+
+    Returns:
+        Complex array of shape (N, N). `G[dj, dk]` for dj, dk = 0, ..., N-1.
+
+    Raises:
+        ValueError: If N is not divisible by 3 (no well-defined period-3
+            phase). To generalise to other wavevectors, compute `chain_fft`
+            and extract phases manually.
+    """
+    N = anion_direction.shape[-1]
+    if N % 3 != 0:
+        raise ValueError(
+            f"inter_chain_correlation requires N divisible by 3 (for period-3 "
+            f"phase), got N={N}."
+        )
+    phi = chain_fft(anion_direction)[..., N // 3]                      # (N, N)
+    v = np.exp(1j * np.angle(phi))                                     # (N, N), unit modulus
+
+    # Build shifted[dj, dk, j, k] = v[(j + dj) % N, (k + dk) % N] via
+    # broadcast-aware advanced indexing; no Python loops.
+    idx = np.arange(N)
+    j_idx = (idx[:, None, None, None] + idx[None, None, :, None]) % N  # (N_dj, 1, N_j, 1)
+    k_idx = (idx[None, :, None, None] + idx[None, None, None, :]) % N  # (1, N_dk, 1, N_k)
+    shifted = v[j_idx, k_idx]                                          # (N, N, N, N)
+
+    G: np.ndarray = np.mean(v[None, None] * np.conj(shifted), axis=(2, 3))
+    return G
