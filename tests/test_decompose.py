@@ -49,3 +49,47 @@ def test_decompose_tracks_alternative_species():
     np.testing.assert_array_equal(ax_o, 1 - ax_in)
     np.testing.assert_array_equal(ay_o, 1 - ay_in)
     np.testing.assert_array_equal(az_o, 1 - az_in)
+
+
+def test_decompose_raises_on_off_lattice_atom():
+    """Atom at a non-(integer or half-integer) position should raise ValueError."""
+    N = 3
+    ax_in = perfect_oof_chain(N, phase=2)
+    ay_in = perfect_oof_chain(N, phase=2)
+    az_in = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax_in, ay_in, az_in)
+    # Perturb one atom by 0.2 A - well off-lattice
+    atoms.positions[10] += np.array([0.2, 0.0, 0.0])
+
+    with pytest.raises(ValueError, match="not on-lattice"):
+        decompose(atoms, N=N)
+
+
+def test_decompose_raises_on_wrong_cation_count():
+    """Structure with too few atoms should raise ValueError."""
+    from ase import Atoms as AseAtoms
+    # Build a structure with only 4 cations (not 27 = 3^3)
+    atoms = AseAtoms(
+        symbols=["Nb"] * 4,
+        positions=np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]) * 3.9,
+        cell=np.diag([3 * 3.9, 3 * 3.9, 3 * 3.9]),
+        pbc=True,
+    )
+    with pytest.raises(ValueError, match="Wrong cation count"):
+        decompose(atoms, N=3)
+
+
+def test_decompose_raises_on_non_orthorhombic_cell():
+    """Triclinic cell should raise ValueError (out of scope for v1)."""
+    N = 3
+    ax_in = perfect_oof_chain(N, phase=2)
+    ay_in = perfect_oof_chain(N, phase=2)
+    az_in = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax_in, ay_in, az_in)
+    # Skew the cell
+    new_cell = atoms.cell.array.copy()
+    new_cell[0, 1] = 0.5     # introduce off-diagonal element
+    atoms.set_cell(new_cell)
+
+    with pytest.raises(ValueError, match="not orthorhombic"):
+        decompose(atoms, N=N)
