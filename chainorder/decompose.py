@@ -27,10 +27,10 @@ def decompose(
         atoms: On-lattice ASE `Atoms` supercell with anions at ideal edge
             midpoints of a simple-cubic cation sublattice.
         N: Supercell size along each axis (cubic N*N*N).
-        origin: Fractional coordinate of the cation sublattice origin.
-            Default `(0, 0, 0)` assumes the cation sits at the corners of
-            the supercell. Pass `(0.5, 0.5, 0.5)` if the cation sits at
-            the body centre.
+        origin: Position of the cation within its unit cell, in unit-cell
+            fractional coordinates. Default `(0, 0, 0)` puts the cation at
+            the unit-cell corner. Pass `(0.5, 0.5, 0.5)` if the cation sits
+            at the unit-cell body centre.
         species: Element symbol to flag as 1 in the output arrays. Default
             `"F"`; all other anion species are flagged 0.
 
@@ -75,7 +75,7 @@ def _build_indices(
         positions: Cartesian atom positions in Angstroms, shape (n_atoms, 3).
         cell: Orthorhombic cell matrix in Angstroms, shape (3, 3).
         N: Supercell size per axis.
-        origin: Fractional coordinate of the cation sublattice origin.
+        origin: Cation position in unit-cell fractional coordinates.
 
     Returns:
         Integer array of shape (3, N, N, N) mapping (direction, j, k, i) to
@@ -94,9 +94,10 @@ def _build_indices(
             f"Non-orthorhombic cells are out of scope for this version."
         )
 
-    # Fractional coords, origin-shifted, wrapped to [0, 1)
+    # Origin is a unit-cell-fractional offset (how the cation sits within
+    # each unit cell); convert to supercell-fractional before subtracting.
     inv_cell = np.linalg.inv(cell)
-    frac = positions @ inv_cell - np.array(origin)
+    frac = positions @ inv_cell - np.asarray(origin, dtype=np.float64) / N
     frac = frac % 1.0
 
     # Scale so integer grid is [0, N) and half-integer grid is [0.5, N)
