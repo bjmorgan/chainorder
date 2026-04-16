@@ -291,5 +291,12 @@ def _apply_indices(
         `ChainArrays` namedtuple of three integer arrays, each shape
         (N, N, N).
     """
-    is_species = (symbols[indices] == species).astype(np.int64)
+    anion_symbols = symbols[indices]
+    is_species = (anion_symbols == species).astype(np.int64)
+    if is_species.sum() == 0:
+        present = sorted(set(anion_symbols.ravel().tolist()))
+        raise ValueError(
+            f"species={species!r} not found on any anion site. "
+            f"Anion species present: {present}."
+        )
     return ChainArrays(x=is_species[0], y=is_species[1], z=is_species[2])
