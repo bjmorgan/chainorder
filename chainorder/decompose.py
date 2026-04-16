@@ -62,10 +62,13 @@ def decompose(
         atoms: On-lattice ASE `Atoms` supercell with anions at ideal edge
             midpoints of a simple-cubic cation sublattice.
         N: Supercell size along each axis (cubic N*N*N).
-        origin: Position of the cation within its unit cell, in unit-cell
-            fractional coordinates. Default `(0, 0, 0)` puts the cation at
-            the unit-cell corner. Pass `(0.5, 0.5, 0.5)` if the cation sits
-            at the unit-cell body centre.
+        origin: Fractional offset of the cation sub-lattice within each
+            unit cell. Anions are assumed to sit at (cation position + 1/2)
+            along one axis. Default `(0.0, 0.0, 0.0)` places cations at
+            unit-cell corners and anions at edge midpoints;
+            `(0.5, 0.5, 0.5)` corresponds to body-centred cations. Each
+            component must lie in `[0.0, 1.0)`; values outside this range
+            raise.
         species: Element symbol to flag as 1 in the output arrays. Default
             `"F"`; all other anion species are flagged 0.
 
