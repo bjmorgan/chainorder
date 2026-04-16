@@ -324,6 +324,11 @@ def _build_indices(
     # Per-axis wrap of the integer part of scaled coords.
     coord = (half_rounded // 2) % np.asarray(shape, dtype=np.int64)
 
+    # The loop is now direction-agnostic (writes to `indices[direction, i, j, k]`
+    # uniformly). After the Task 3 cache re-key this became a natural
+    # vectorisation target; the CLAUDE.md note about "direction-dependent axis
+    # ordering" no longer applies to this loop. Left loopy pending a separate
+    # vectorisation change; bit-identical with the vectorised form.
     for atom_idx in anion_atoms:
         direction = Direction(int(np.argmax(is_half[atom_idx])))
         i, j, k = int(coord[atom_idx, 0]), int(coord[atom_idx, 1]), int(coord[atom_idx, 2])
