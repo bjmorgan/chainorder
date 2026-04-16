@@ -166,11 +166,28 @@ def _build_indices(
     """
     # Orthorhombic check: off-diagonal elements must be zero (within tolerance
     # scaled by the largest cell-vector component).
-    off_diag = cell - np.diag(np.diag(cell))
+    diag = np.diag(cell)
+    off_diag = cell - np.diag(diag)
     if np.any(np.abs(off_diag) > _TOL * max(1.0, np.abs(cell).max())):
         raise ValueError(
             f"Cell is not orthorhombic (off-diagonal elements present): {off_diag}. "
             f"Non-orthorhombic cells are out of scope for this version."
+        )
+
+    # Diagonal must be finite and positive: degenerate cells would
+    # propagate NaN or produce platform-dependent garbage on int casts.
+    if not np.all(np.isfinite(diag)) or np.any(diag <= 0):
+        raise ValueError(
+            f"Cell diagonal must be positive and finite, got {diag}."
+        )
+
+    # Cubic requirement: N is a single scalar, so the three axes must be
+    # equal. Non-cubic orthorhombic cells are out of scope for v1.
+    if not np.allclose(diag, diag[0], rtol=_TOL):
+        raise ValueError(
+            f"Cell must be cubic (equal diagonal components), got diagonal "
+            f"{diag}. Non-cubic orthorhombic cells are out of scope for this "
+            f"version."
         )
 
     # Origin is a unit-cell-fractional offset (how the cation sits within
