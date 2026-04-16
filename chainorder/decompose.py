@@ -346,4 +346,8 @@ def _apply_indices(
             f"species={species!r} not found on any anion site. "
             f"Anion species present: {present}."
         )
-    return ChainArrays(x=is_species[0], y=is_species[1], z=is_species[2])
+    return ChainArrays(
+        x=is_species[Direction.X],
+        y=is_species[Direction.Y],
+        z=is_species[Direction.Z],
+    )
