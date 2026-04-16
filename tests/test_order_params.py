@@ -95,6 +95,43 @@ def test_motif_counts_cyclic_rotations_collapse():
     assert counts[(0, 0, 1)][0, 2] == N
 
 
+def test_motif_counts_window_length_1_is_single_site():
+    """window_length=1 counts single-site species; (0,) + (1,) sum to N per chain."""
+    N = 6
+    arr = perfect_oof_chain(N, phase=2)      # 1/3 of sites are F
+    counts = order_params.motif_counts(arr, window_length=1)
+    # (0,) is 2N/3 per chain, (1,) is N/3 per chain; they cover all N windows.
+    assert set(counts) == {(0,), (1,)}
+    np.testing.assert_array_equal(counts[(0,)], np.full((N, N), 2 * N // 3))
+    np.testing.assert_array_equal(counts[(1,)], np.full((N, N), N // 3))
+
+
+def test_motif_counts_window_length_equal_N_is_full_chain():
+    """window_length == N: every rotation of the chain is in the same class."""
+    N = 6
+    arr = perfect_oof_chain(N, phase=2)      # chain [0,0,1,0,0,1]
+    counts = order_params.motif_counts(arr, window_length=N)
+    # All N sliding windows rotate through the same N-tuple cyclically, so
+    # every window collapses to the same canonical form; counts sum to N.
+    total = sum(counts.values())
+    np.testing.assert_array_equal(total, np.full((N, N), N))
+    assert len(counts) == 1
+
+
+def test_motif_counts_rejects_invalid_window_lengths():
+    """Boundary cases must raise explicitly rather than silently alias."""
+    N = 6
+    arr = np.zeros((N, N, N), dtype=int)
+    with pytest.raises(ValueError, match="window_length must be >= 1"):
+        order_params.motif_counts(arr, window_length=0)
+    with pytest.raises(ValueError, match="window_length must be >= 1"):
+        order_params.motif_counts(arr, window_length=-3)
+    with pytest.raises(ValueError, match="exceeds chain length"):
+        order_params.motif_counts(arr, window_length=N + 1)
+    with pytest.raises(TypeError, match="must be an integer"):
+        order_params.motif_counts(arr, window_length=2.5)     # type: ignore[arg-type]
+
+
 def test_motif_counts_per_chain_distinct_for_mixed_patterns():
     """Mixed OOF/OFOF chains: counts per (j, k) reflect each chain's pattern."""
     N = 6
