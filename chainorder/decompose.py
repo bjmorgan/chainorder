@@ -80,11 +80,43 @@ def decompose(
             for the given N, or any atom is off the expected on-lattice
             positions (within tolerance).
     """
+    origin = _validate_origin(origin)
     positions = np.ascontiguousarray(atoms.positions, dtype=np.float64)
     cell = np.ascontiguousarray(atoms.cell.array, dtype=np.float64)
     indices = _indices_cached(positions.tobytes(), cell.tobytes(), N, origin)
     symbols = np.array(atoms.get_chemical_symbols())
     return _apply_indices(symbols, indices, species)
+
+
+def _validate_origin(
+    origin: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    """Normalise and validate the `origin` argument to `decompose`.
+
+    Casts each component to `float` (so `(0, 0, 0)` and `(0.0, 0.0, 0.0)`
+    produce the same hashable cache key) and enforces that each component
+    lies in `[0.0, 1.0)` — values outside this range would wrap silently
+    through the `frac % 1.0` operation in `_build_indices`.
+    """
+    if len(origin) != 3:
+        raise ValueError(
+            f"origin must have exactly 3 components, got {len(origin)}."
+        )
+    try:
+        a, b, c = (float(origin[0]), float(origin[1]), float(origin[2]))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"origin components must be numeric, got {origin!r}."
+        ) from exc
+    for name, v in (("origin[0]", a), ("origin[1]", b), ("origin[2]", c)):
+        if not 0.0 <= v < 1.0:
+            raise ValueError(
+                f"{name} must lie in [0.0, 1.0), got {v}. Origin is "
+                f"expressed in unit-cell fractional coordinates; values "
+                f"outside this range are equivalent under periodicity and "
+                f"must be wrapped by the caller."
+            )
+    return (a, b, c)
 
 
 @lru_cache(maxsize=1)
