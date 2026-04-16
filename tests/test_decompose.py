@@ -303,6 +303,43 @@ def test_decompose_rebuilds_when_n_changes(monkeypatch):
     assert call_count["n"] == 2
 
 
+def test_decompose_origin_int_and_float_share_cache_key(monkeypatch):
+    """origin=(0, 0, 0) (int) and (0.0, 0.0, 0.0) (float) hit the same cache.
+
+    Pins the design choice to normalise origin to float before keying the
+    lru_cache: if a future refactor dropped the float cast, int and float
+    tuples would produce distinct cache keys despite being equal, causing
+    an extra _build_indices call on the second invocation. This test is
+    the regression guard for that choice.
+    """
+    import importlib
+    dm = importlib.import_module("chainorder.decompose")
+
+    call_count = {"n": 0}
+    original_build = dm._build_indices
+
+    def counting_build(*args, **kwargs):
+        call_count["n"] += 1
+        return original_build(*args, **kwargs)
+
+    monkeypatch.setattr(dm, "_build_indices", counting_build)
+    dm._indices_cached.cache_clear()
+
+    N = 3
+    ax = perfect_oof_chain(N, phase=2)
+    ay = perfect_oof_chain(N, phase=2)
+    az = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax, ay, az)
+
+    decompose(atoms, N=N, origin=(0, 0, 0))           # type: ignore[arg-type]
+    decompose(atoms, N=N, origin=(0.0, 0.0, 0.0))
+
+    assert call_count["n"] == 1, (
+        f"Expected int and float origins to share a cache key; got "
+        f"{call_count['n']} builds."
+    )
+
+
 def test_decompose_cache_hit_with_new_symbols_same_positions(monkeypatch):
     """Two Atoms with identical positions/cell but different F/O patterns:
     second call is a cache hit AND produces the correct per-symbols output."""
