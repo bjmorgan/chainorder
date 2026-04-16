@@ -1,7 +1,10 @@
 """Order parameters for ReO3-type anion ordering (chain-level statistics).
 
-All functions here expect the shape-``(N, N, N)`` binary integer arrays
-produced by `chainorder.decompose`.
+All functions here expect the per-direction binary integer arrays
+produced by `chainorder.decompose`, with the last axis along-chain. The
+exact shape is direction-specific (see `chainorder.decompose.ChainArrays`):
+``(Ny, Nz, Nx)`` for x, ``(Nx, Nz, Ny)`` for y, ``(Nx, Ny, Nz)`` for z.
+In the cubic case all three reduce to ``(N, N, N)``.
 """
 import numpy as np
 
@@ -10,15 +13,17 @@ def chain_fft(anion_direction: np.ndarray) -> np.ndarray:
     """Discrete Fourier transform along each chain.
 
     Args:
-        anion_direction: Binary species array along one chain direction (from
-            `decompose()`), shape (N, N, N).
+        anion_direction: Binary species array for a single chain direction
+            (from `decompose()`), shape `(N_lat0, N_lat1, N_chain)`. Last
+            axis is along-chain.
 
     Returns:
-        Complex array of shape (N, N, N). Last axis is the Fourier index
-        k = 0, 1, ..., N-1. Computed as `np.fft.fft(arr, axis=-1) / N`.
-        For a chain that is strictly periodic with period `p` (N divisible
-        by `p`, exactly one flagged atom per period), the DC component and
-        the peak at `k = N // p` each have magnitude `1 / p`.
+        Complex array of the same shape as `anion_direction`. Last axis
+        is the Fourier index `k = 0, 1, ..., N_chain - 1`. Computed as
+        `np.fft.fft(arr, axis=-1) / N_chain`. For a chain that is strictly
+        periodic with period `p` (`N_chain` divisible by `p`, exactly one
+        flagged atom per period), the DC component and the peak at
+        `k = N_chain // p` each have magnitude `1 / p`.
     """
     N = anion_direction.shape[-1]
     return np.fft.fft(anion_direction, axis=-1) / N
@@ -31,17 +36,17 @@ def motif_counts(
     """Count cyclic-equivalence classes of length-`window_length` motifs per chain.
 
     Windows wrap periodically: every chain position is the start of exactly one
-    window, so counts per chain sum to N regardless of `window_length`.
+    window, so counts per chain sum to `N_chain` regardless of `window_length`.
 
     Args:
-        anion_direction: Binary species array along one chain direction,
-            shape (N, N, N).
+        anion_direction: Binary species array for a single chain direction,
+            shape `(N_lat0, N_lat1, N_chain)`. Last axis is along-chain.
         window_length: Length of the sliding window. Must satisfy
-            ``1 <= window_length <= min(N, 62)`` (see `Raises`).
+            ``1 <= window_length <= min(N_chain, 62)`` (see `Raises`).
 
     Returns:
-        Dictionary mapping each canonical motif tuple to an integer array of
-        shape (N, N) giving per-chain counts.
+        Dictionary mapping each canonical motif tuple to an integer array
+        of shape `(N_lat0, N_lat1)` giving per-chain counts.
 
     Raises:
         TypeError: If `window_length` is not an integer, or if
@@ -49,7 +54,7 @@ def motif_counts(
             truncate through the bit-packing cast).
         ValueError: If `window_length` is outside the valid range. The upper
             bound of 62 is a hard limit of the int64 bit-packing used for
-            the canonicalisation table; the upper bound of N is geometric
+            the canonicalisation table; the upper bound of `N_chain` is geometric
             (larger windows would wrap around the chain and alias).
 
     Notes:
@@ -89,15 +94,15 @@ def motif_counts(
             f"This limit is well above any realistic chain length."
         )
 
-    # Build (N, w) index array: windows[start, offset] -> position in chain.
-    window_idx = (np.arange(N)[:, None] + np.arange(w)[None, :]) % N   # (N, w)
+    # Build (N_chain, w) index array: windows[start, offset] -> position in chain.
+    window_idx = (np.arange(N)[:, None] + np.arange(w)[None, :]) % N   # (N_chain, w)
 
-    # windows[j, k, start, offset] = anion_direction[j, k, (start + offset) % N]
-    windows = anion_direction[:, :, window_idx]                        # (N, N, N, w)
+    # windows[j, k, start, offset] = anion_direction[j, k, (start + offset) % N_chain]
+    windows = anion_direction[:, :, window_idx]                        # (N_lat0, N_lat1, N_chain, w)
 
     # Encode each window as an integer: bit i = value at offset i.
     powers = (1 << np.arange(w)).astype(np.int64)                      # (w,)
-    encoded = (windows.astype(np.int64) * powers).sum(axis=-1)         # (N, N, N)
+    encoded = (windows.astype(np.int64) * powers).sum(axis=-1)         # (N_lat0, N_lat1, N_chain)
 
     # Precompute canonical code for every possible window value.
     n_codes = 1 << w
@@ -110,7 +115,7 @@ def motif_counts(
         canon_code[code] = best_code
         canon_tuple[best_code] = best
 
-    canonical_encoded = canon_code[encoded]                            # (N, N, N)
+    canonical_encoded = canon_code[encoded]                            # (N_lat0, N_lat1, N_chain)
 
     # Tally occurrences per chain (sum over the last axis, which is `start`).
     counts: dict[tuple[int, ...], np.ndarray] = {}
@@ -130,22 +135,22 @@ def along_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     Wrap-around is periodic.
 
     Args:
-        anion_direction: Binary species array along one chain direction,
-            shape (N, N, N).
+        anion_direction: Binary species array for a single chain direction,
+            shape `(N_lat0, N_lat1, N_chain)`. Last axis is along-chain.
 
     Returns:
-        g(r) for r = 0, 1, ..., N-1, shape (N,).
+        g(r) for `r = 0, 1, ..., N_chain - 1`, shape `(N_chain,)`.
     """
     N = anion_direction.shape[-1]
     s_mean = float(anion_direction.mean())
 
-    # Wiener-Khinchin: g(r) = IFFT(|FFT(s)|^2) / N, averaged over chains,
+    # Wiener-Khinchin: g(r) = IFFT(|FFT(s)|^2) / N_chain, averaged over chains,
     # minus the mean-density contribution. O(N^3 log N) instead of the O(N^4)
     # broadcast-indexed stack of r-shifted copies.
-    fft_per_chain = np.fft.fft(anion_direction, axis=-1)               # (N, N, N)
-    power = np.abs(fft_per_chain) ** 2                                 # (N, N, N)
-    autocorr = np.fft.ifft(power, axis=-1).real / N                    # (N, N, N)
-    g = autocorr.mean(axis=(0, 1)) - s_mean ** 2                       # (N,)
+    fft_per_chain = np.fft.fft(anion_direction, axis=-1)               # (N_lat0, N_lat1, N_chain)
+    power = np.abs(fft_per_chain) ** 2                                 # (N_lat0, N_lat1, N_chain)
+    autocorr = np.fft.ifft(power, axis=-1).real / N                    # (N_lat0, N_lat1, N_chain)
+    g = autocorr.mean(axis=(0, 1)) - s_mean ** 2                       # (N_chain,)
     return g
 
 
