@@ -80,6 +80,9 @@ def decompose(
             for the given N, or any atom is off the expected on-lattice
             positions (within tolerance).
     """
+    if not isinstance(N, (int, np.integer)) or N < 1:
+        raise ValueError(f"N must be a positive integer, got {N!r}.")
+    N = int(N)
     origin = _validate_origin(origin)
     positions = np.ascontiguousarray(atoms.positions, dtype=np.float64)
     cell = np.ascontiguousarray(atoms.cell.array, dtype=np.float64)
