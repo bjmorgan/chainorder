@@ -53,7 +53,7 @@ def decompose(
 
     Identifies each anion from its fractional coordinates (half-integer in
     exactly one axis, integer in the other two) and assigns it to a slot in
-    one of three (N, N, N) arrays — one per chain direction. The assignment
+    one of three (N, N, N) arrays -- one per chain direction. The assignment
     is cached across calls with identical positions, cell, N, and origin, so
     analysing a trajectory only pays the decomposition cost on the first
     frame.
@@ -101,7 +101,7 @@ def _validate_origin(
 
     Casts each component to `float` (so `(0, 0, 0)` and `(0.0, 0.0, 0.0)`
     produce the same hashable cache key) and enforces that each component
-    lies in `[0.0, 1.0)` — values outside this range would wrap silently
+    lies in `[0.0, 1.0)` -- values outside this range would wrap silently
     through the `frac % 1.0` operation in `_build_indices`.
     """
     if len(origin) != 3:
@@ -207,8 +207,8 @@ def _build_indices(
 
     # Check atoms are on-lattice (tolerance scaled by N)
     deviation = np.abs(scaled - half_rounded / 2)
-    # Note: deviation can be ~N near the wrap boundary (scaled ≈ N maps to 0).
-    # After %1.0 and *N, scaled ∈ [0, N); half_rounded can be 0 or 2*N. We
+    # Note: deviation can be ~N near the wrap boundary (scaled ~= N maps to 0).
+    # After %1.0 and *N, scaled is in [0, N); half_rounded can be 0 or 2*N. We
     # canonicalise half_rounded by taking mod 2*N.
     half_rounded = half_rounded % (2 * N)
     # Recompute deviation after canonicalisation

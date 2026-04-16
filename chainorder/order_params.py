@@ -139,7 +139,7 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     where the averages run over all `(a, b)` pairs (with periodic wrap in
     `a, b`). Amplitude-weighted: chains with small `|phi|` (disordered)
     contribute proportionally less, so disordered input gives `|G| ~ 0`
-    off the origin by construction — no threshold or guard required.
+    off the origin by construction -- no threshold or guard required.
 
     `|G|` ranges from `~0` (uncorrelated) to `1` (fully phase-locked);
     `arg(G)` encodes the phase pattern (`0` for uniform alignment, a
@@ -201,7 +201,7 @@ def structure_factor(
 
     Rotation-equivariant: a lattice-symmetry rotation of the input
     structure produces the correspondingly rotated output. Anisotropy is
-    preserved — chains ordered along one direction give peaks on the
+    preserved -- chains ordered along one direction give peaks on the
     matching reciprocal axis.
 
     Args:

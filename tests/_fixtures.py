@@ -56,7 +56,7 @@ def build_nbo2f(
 
 
 def perfect_oof_chain(N: int, phase: int = 2) -> np.ndarray:
-    """Shape-(N, N, N) binary array; every chain is OOF with F at i ≡ phase (mod 3)."""
+    """Shape-(N, N, N) binary array; every chain is OOF with F at i == phase (mod 3)."""
     assert N % 3 == 0, "N must be divisible by 3 for exact OOF"
     arr = np.zeros((N, N, N), dtype=int)
     for i in range(N):

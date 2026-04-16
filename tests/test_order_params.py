@@ -99,7 +99,7 @@ def test_motif_counts_per_chain_distinct_for_mixed_patterns():
     """Mixed OOF/OFOF chains: counts per (j, k) reflect each chain's pattern."""
     N = 6
     arr = np.zeros((N, N, N), dtype=int)
-    # j in [0, 3): OOF (F at i ≡ 2 mod 3)
+    # j in [0, 3): OOF (F at i == 2 mod 3)
     for i in range(N):
         if i % 3 == 2:
             arr[:3, :, i] = 1
@@ -182,14 +182,14 @@ def test_structure_factor_only_x_chains_ordered_peaks_on_kx_axis():
 
 
 def test_structure_factor_rotation_equivariance_about_z():
-    """Rotating the structure 90° about z moves peaks from the kx to the ky axis."""
+    """Rotating the structure 90 deg about z moves peaks from the kx to the ky axis."""
     N = 6
     ordered = perfect_oof_chain(N, phase=2)
     zero = np.zeros((N, N, N), dtype=int)
 
     # "Unrotated": the x-chains carry the OOF pattern.
     F_unrot = order_params.structure_factor(ordered, zero, zero)
-    # "Rotated 90° about z": what were x-chains are now y-chains, so the same
+    # "Rotated 90 deg about z": what were x-chains are now y-chains, so the same
     # occupation pattern appears in the y-chain slot.
     F_rot = order_params.structure_factor(zero, ordered, zero)
 
