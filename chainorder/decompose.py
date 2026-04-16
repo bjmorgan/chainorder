@@ -54,9 +54,13 @@ def decompose(
     Identifies each anion from its fractional coordinates (half-integer in
     exactly one axis, integer in the other two) and assigns it to a slot in
     one of three (N, N, N) arrays -- one per chain direction. The assignment
-    is cached across calls with identical positions, cell, N, and origin, so
-    analysing a trajectory only pays the decomposition cost on the first
-    frame.
+    is cached across calls with identical `(positions, cell, N, origin)`,
+    so re-analysing the same frame (e.g. with a different `species`) is
+    free after the first call, and analysing an MC trajectory of occupation
+    swaps -- where atom positions are identical frame-to-frame -- pays the
+    decomposition cost only once. Off-lattice MD trajectories (positions
+    perturbed thermally) are out of scope; they would not pass the
+    on-lattice check anyway.
 
     Args:
         atoms: On-lattice ASE `Atoms` supercell with anions at ideal edge
