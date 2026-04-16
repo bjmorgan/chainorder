@@ -397,12 +397,11 @@ def test_structure_factor_single_x_anion_carries_sublattice_phase():
 
 
 def test_structure_factor_raises_on_shape_mismatch():
-    """Inputs with inconsistent shapes should raise ValueError."""
-    N = 6
-    arr = np.zeros((N, N, N), dtype=int)
-    bad = np.zeros((N, N, N + 1), dtype=int)
+    """Three individually cubic arrays with different N raise ValueError."""
+    arr_n6 = np.zeros((6, 6, 6), dtype=int)
+    arr_n4 = np.zeros((4, 4, 4), dtype=int)
     with pytest.raises(ValueError, match="same shape"):
-        order_params.structure_factor(arr, arr, bad)
+        order_params.structure_factor(arr_n6, arr_n6, arr_n4)
 
 
 def test_structure_factor_raises_on_non_cubic_shape():
