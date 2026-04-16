@@ -171,6 +171,14 @@ def _build_indices(
         ValueError: On non-orthorhombic cells, off-lattice atoms, wrong atom
             counts, or slot collisions.
     """
+    # Finite check on the whole matrix: NaN anywhere in `cell` would propagate
+    # silently through the orthorhombic threshold (`NaN > x` is False) and
+    # the on-lattice check, giving platform-dependent int garbage downstream.
+    if not np.all(np.isfinite(cell)):
+        raise ValueError(
+            f"Cell must contain only finite values, got {cell}."
+        )
+
     # Orthorhombic check: off-diagonal elements must be zero (within tolerance
     # scaled by the largest cell-vector component).
     diag = np.diag(cell)
@@ -181,11 +189,11 @@ def _build_indices(
             f"Non-orthorhombic cells are out of scope for this version."
         )
 
-    # Diagonal must be finite and positive: degenerate cells would
-    # propagate NaN or produce platform-dependent garbage on int casts.
-    if not np.all(np.isfinite(diag)) or np.any(diag <= 0):
+    # Diagonal must be positive: zero- or negative-length cell vectors would
+    # produce degenerate (NaN) transforms even though the finite check passed.
+    if np.any(diag <= 0):
         raise ValueError(
-            f"Cell diagonal must be positive and finite, got {diag}."
+            f"Cell diagonal must be positive, got {diag}."
         )
 
     # Cubic requirement: N is a single scalar, so the three axes must be

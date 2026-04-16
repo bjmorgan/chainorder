@@ -150,7 +150,26 @@ def test_decompose_raises_on_degenerate_cell():
     az = perfect_oof_chain(N, phase=2)
     atoms = build_nbo2f(N, ax, ay, az)
     atoms.set_cell(np.diag([0.0, 0.0, 0.0]))
-    with pytest.raises(ValueError, match="positive and finite"):
+    with pytest.raises(ValueError, match="diagonal must be positive"):
+        decompose(atoms, N=N)
+
+
+def test_decompose_raises_on_nan_in_cell_off_diagonal():
+    """NaN anywhere in the cell matrix must raise, not propagate silently.
+
+    If NaN lands in an off-diagonal position, `NaN > threshold` is False
+    under IEEE 754 so a naive orthorhombic check would silently pass and
+    let NaN propagate into the matrix inverse.
+    """
+    N = 3
+    ax = perfect_oof_chain(N, phase=2)
+    ay = perfect_oof_chain(N, phase=2)
+    az = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax, ay, az)
+    new_cell = atoms.cell.array.copy()
+    new_cell[0, 1] = np.nan
+    atoms.set_cell(new_cell)
+    with pytest.raises(ValueError, match="finite"):
         decompose(atoms, N=N)
 
 
