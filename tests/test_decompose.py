@@ -4,6 +4,8 @@ from chainorder import decompose
 from tests._fixtures import (
     build_nbo2f,
     perfect_oof_chain,
+    oof_or_zero,
+    dummy_chain_arrays,
     SHAPES,
 )
 
@@ -11,23 +13,9 @@ from tests._fixtures import (
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_orthorhombic_round_trip(shape):
     """Round-trip for arbitrary orthorhombic shape."""
-    Nx, Ny, Nz = shape
-    # Use OOF where chain lengths are divisible by 3, else all-zero.
-    ax_in = (
-        perfect_oof_chain(shape, phase=2, direction="x")
-        if Nx % 3 == 0
-        else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay_in = (
-        perfect_oof_chain(shape, phase=0, direction="y")
-        if Ny % 3 == 0
-        else np.zeros((Nx, Nz, Ny), dtype=int)
-    )
-    az_in = (
-        perfect_oof_chain(shape, phase=1, direction="z")
-        if Nz % 3 == 0
-        else np.zeros((Nx, Ny, Nz), dtype=int)
-    )
+    ax_in = oof_or_zero(shape, phase=2, direction="x")
+    ay_in = oof_or_zero(shape, phase=0, direction="y")
+    az_in = oof_or_zero(shape, phase=1, direction="z")
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
 
     out = decompose(atoms, N=shape)
@@ -40,20 +28,9 @@ def test_decompose_orthorhombic_round_trip(shape):
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_returns_input_species_arrays(shape):
     """Round-trip: build Atoms from known chain arrays, decompose, recover arrays."""
-    Nx, Ny, Nz = shape
-    # Use OOF only on axes whose chain length is divisible by 3; else all-zero.
-    ax_in = (
-        perfect_oof_chain(shape, phase=2, direction="x")
-        if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay_in = (
-        perfect_oof_chain(shape, phase=0, direction="y")
-        if Ny % 3 == 0 else np.zeros((Nx, Nz, Ny), dtype=int)
-    )
-    az_in = (
-        perfect_oof_chain(shape, phase=1, direction="z")
-        if Nz % 3 == 0 else np.zeros((Nx, Ny, Nz), dtype=int)
-    )
+    ax_in = oof_or_zero(shape, phase=2, direction="x")
+    ay_in = oof_or_zero(shape, phase=0, direction="y")
+    az_in = oof_or_zero(shape, phase=1, direction="z")
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
 
     ax_out, ay_out, az_out = decompose(atoms, N=shape)
@@ -67,19 +44,9 @@ def test_decompose_returns_input_species_arrays(shape):
 def test_decompose_with_half_origin(shape):
     """Origin at (0.5, 0.5, 0.5): cation sits at half-integer positions, anions at
     integer + half-integer combinations."""
-    Nx, Ny, Nz = shape
-    ax_in = (
-        perfect_oof_chain(shape, phase=1, direction="x")
-        if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay_in = (
-        perfect_oof_chain(shape, phase=2, direction="y")
-        if Ny % 3 == 0 else np.zeros((Nx, Nz, Ny), dtype=int)
-    )
-    az_in = (
-        perfect_oof_chain(shape, phase=0, direction="z")
-        if Nz % 3 == 0 else np.zeros((Nx, Ny, Nz), dtype=int)
-    )
+    ax_in = oof_or_zero(shape, phase=1, direction="x")
+    ay_in = oof_or_zero(shape, phase=2, direction="y")
+    az_in = oof_or_zero(shape, phase=0, direction="z")
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in, origin=(0.5, 0.5, 0.5))
 
     ax_out, ay_out, az_out = decompose(atoms, N=shape, origin=(0.5, 0.5, 0.5))
@@ -92,13 +59,8 @@ def test_decompose_with_half_origin(shape):
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_tracks_alternative_species(shape):
     """Default species='F' flags F. Passing species='O' flags O instead (inverted)."""
-    Nx, Ny, Nz = shape
-    ax_in = (
-        perfect_oof_chain(shape, phase=2, direction="x")
-        if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay_in = np.zeros((Nx, Nz, Ny), dtype=int)
-    az_in = np.zeros((Nx, Ny, Nz), dtype=int)
+    ax_in = oof_or_zero(shape, phase=2, direction="x")
+    _, ay_in, az_in = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
 
     ax_o, ay_o, az_o = decompose(atoms, N=shape, species="O")
@@ -112,27 +74,15 @@ def test_decompose_tracks_alternative_species(shape):
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_raises_on_off_lattice_atom(shape):
     """Atom at a non-(integer or half-integer) position should raise ValueError."""
-    Nx, Ny, Nz = shape
-    ax_in = (
-        perfect_oof_chain(shape, phase=2, direction="x")
-        if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay_in = (
-        perfect_oof_chain(shape, phase=2, direction="y")
-        if Ny % 3 == 0 else np.zeros((Nx, Nz, Ny), dtype=int)
-    )
-    az_in = (
-        perfect_oof_chain(shape, phase=2, direction="z")
-        if Nz % 3 == 0 else np.zeros((Nx, Ny, Nz), dtype=int)
-    )
+    ax_in, ay_in, az_in = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
     # Perturb one atom by 0.2 A along x; deviation is on the x axis.
     atoms.positions[len(atoms) // 2] += np.array([0.2, 0.0, 0.0])
 
     # Match on the upgraded diagnostic content (axis letter) so a future
     # refactor can't silently strip the detail.
-    with pytest.raises(ValueError, match=r"is not on-lattice.*axis x"):
-        decompose(atoms, N=shape)
+    with pytest.raises(ValueError, match=r"Atom \d+ is not on-lattice.*axis x"):
+        decompose(atoms, N=shape, species="O")
 
 
 def test_decompose_raises_on_wrong_cation_count():
@@ -157,23 +107,12 @@ def test_decompose_raises_on_wrong_anion_count(shape):
     cation count is also wrong, as in `test_decompose_raises_on_wrong_cation_count`).
     """
     Nx, Ny, Nz = shape
-    ax_in = (
-        perfect_oof_chain(shape, phase=2, direction="x")
-        if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay_in = (
-        perfect_oof_chain(shape, phase=2, direction="y")
-        if Ny % 3 == 0 else np.zeros((Nx, Nz, Ny), dtype=int)
-    )
-    az_in = (
-        perfect_oof_chain(shape, phase=2, direction="z")
-        if Nz % 3 == 0 else np.zeros((Nx, Ny, Nz), dtype=int)
-    )
+    ax_in, ay_in, az_in = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
     # Remove one anion; cation count (Nx*Ny*Nz) stays correct, anion count drops.
     del atoms[Nx * Ny * Nz + 5]
     with pytest.raises(ValueError, match="Wrong anion count"):
-        decompose(atoms, N=shape)
+        decompose(atoms, N=shape, species="O")
 
 
 def test_decompose_rejects_invalid_N():
@@ -191,41 +130,17 @@ def test_decompose_rejects_invalid_N():
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_rejects_origin_out_of_range(shape):
     """origin components outside [0, 1) raise rather than wrapping silently."""
-    Nx, Ny, Nz = shape
-    ax = (
-        perfect_oof_chain(shape, phase=2, direction="x")
-        if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay = (
-        perfect_oof_chain(shape, phase=2, direction="y")
-        if Ny % 3 == 0 else np.zeros((Nx, Nz, Ny), dtype=int)
-    )
-    az = (
-        perfect_oof_chain(shape, phase=2, direction="z")
-        if Nz % 3 == 0 else np.zeros((Nx, Ny, Nz), dtype=int)
-    )
+    ax, ay, az = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax, ay, az)
     for bad_origin in ((1.5, 0.0, 0.0), (-0.1, 0.0, 0.0), (0.0, 1.0, 0.0)):
         with pytest.raises(ValueError, match=r"origin\[\d\] must lie in"):
-            decompose(atoms, N=shape, origin=bad_origin)
+            decompose(atoms, N=shape, origin=bad_origin, species="O")
 
 
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_raises_when_species_absent(shape):
     """A species symbol absent from all anion sites raises with a list of present species."""
-    Nx, Ny, Nz = shape
-    ax = (
-        perfect_oof_chain(shape, phase=2, direction="x")
-        if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay = (
-        perfect_oof_chain(shape, phase=2, direction="y")
-        if Ny % 3 == 0 else np.zeros((Nx, Nz, Ny), dtype=int)
-    )
-    az = (
-        perfect_oof_chain(shape, phase=2, direction="z")
-        if Nz % 3 == 0 else np.zeros((Nx, Ny, Nz), dtype=int)
-    )
+    ax, ay, az = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax, ay, az)
     with pytest.raises(ValueError, match="species='Xe' not found"):
         decompose(atoms, N=shape, species="Xe")
@@ -234,23 +149,11 @@ def test_decompose_raises_when_species_absent(shape):
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_raises_on_degenerate_cell(shape):
     """Zero-diagonal cell raises on the finite/positive check."""
-    Nx, Ny, Nz = shape
-    ax = (
-        perfect_oof_chain(shape, phase=2, direction="x")
-        if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay = (
-        perfect_oof_chain(shape, phase=2, direction="y")
-        if Ny % 3 == 0 else np.zeros((Nx, Nz, Ny), dtype=int)
-    )
-    az = (
-        perfect_oof_chain(shape, phase=2, direction="z")
-        if Nz % 3 == 0 else np.zeros((Nx, Ny, Nz), dtype=int)
-    )
+    ax, ay, az = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax, ay, az)
     atoms.set_cell(np.diag([0.0, 0.0, 0.0]))
     with pytest.raises(ValueError, match="diagonal must be positive"):
-        decompose(atoms, N=shape)
+        decompose(atoms, N=shape, species="O")
 
 
 @pytest.mark.parametrize("row,col", [(0, 1), (0, 2), (1, 2), (2, 0)])
@@ -277,19 +180,7 @@ def test_decompose_raises_on_non_finite_in_cell(row, col, bad_value):
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_raises_on_non_orthorhombic_cell(shape):
     """Triclinic cell should raise ValueError (out of scope for v1)."""
-    Nx, Ny, Nz = shape
-    ax_in = (
-        perfect_oof_chain(shape, phase=2, direction="x")
-        if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay_in = (
-        perfect_oof_chain(shape, phase=2, direction="y")
-        if Ny % 3 == 0 else np.zeros((Nx, Nz, Ny), dtype=int)
-    )
-    az_in = (
-        perfect_oof_chain(shape, phase=2, direction="z")
-        if Nz % 3 == 0 else np.zeros((Nx, Ny, Nz), dtype=int)
-    )
+    ax_in, ay_in, az_in = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
     # Skew the cell
     new_cell = atoms.cell.array.copy()
@@ -297,7 +188,7 @@ def test_decompose_raises_on_non_orthorhombic_cell(shape):
     atoms.set_cell(new_cell)
 
     with pytest.raises(ValueError, match="not orthorhombic"):
-        decompose(atoms, N=shape)
+        decompose(atoms, N=shape, species="O")
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -318,24 +209,12 @@ def test_decompose_caches_indices_across_calls(monkeypatch, shape):
     # Clear any existing cache (from prior tests in the same session)
     dm._indices_cached.cache_clear()
 
-    Nx, Ny, Nz = shape
-    ax_in = (
-        perfect_oof_chain(shape, phase=2, direction="x")
-        if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay_in = (
-        perfect_oof_chain(shape, phase=2, direction="y")
-        if Ny % 3 == 0 else np.zeros((Nx, Nz, Ny), dtype=int)
-    )
-    az_in = (
-        perfect_oof_chain(shape, phase=2, direction="z")
-        if Nz % 3 == 0 else np.zeros((Nx, Ny, Nz), dtype=int)
-    )
+    ax_in, ay_in, az_in = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
 
-    decompose(atoms, N=shape)
-    decompose(atoms, N=shape)
-    decompose(atoms, N=shape)
+    decompose(atoms, N=shape, species="O")
+    decompose(atoms, N=shape, species="O")
+    decompose(atoms, N=shape, species="O")
 
     assert call_count["n"] == 1, f"Expected 1 build, got {call_count['n']}"
 
@@ -356,22 +235,8 @@ def test_decompose_rebuilds_when_n_changes(monkeypatch):
     dm._indices_cached.cache_clear()
 
     for shape in [(3, 3, 3), (6, 6, 6), (2, 3, 4), (3, 3, 4)]:
-        Nx, Ny, Nz = shape
-        ax_in = (
-            perfect_oof_chain(shape, phase=2, direction="x")
-            if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-        )
-        ay_in = (
-            perfect_oof_chain(shape, phase=2, direction="y")
-            if Ny % 3 == 0 else np.zeros((Nx, Nz, Ny), dtype=int)
-        )
-        az_in = (
-            perfect_oof_chain(shape, phase=2, direction="z")
-            if Nz % 3 == 0 else np.zeros((Nx, Ny, Nz), dtype=int)
-        )
+        ax_in, ay_in, az_in = dummy_chain_arrays(shape)
         atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
-        # Some shapes are all zeros (no F); use species="O" so the species
-        # check still passes regardless of chain array content.
         decompose(atoms, N=shape, species="O")
 
     assert call_count["n"] == 4
@@ -393,10 +258,7 @@ def test_decompose_rebuilds_when_single_axis_changes(monkeypatch):
     dm._indices_cached.cache_clear()
 
     for shape in [(3, 3, 3), (3, 3, 6), (3, 6, 3), (6, 3, 3)]:
-        Nx, Ny, Nz = shape
-        ax = np.zeros((Ny, Nz, Nx), dtype=int)
-        ay = np.zeros((Nx, Nz, Ny), dtype=int)
-        az = np.zeros((Nx, Ny, Nz), dtype=int)
+        ax, ay, az = dummy_chain_arrays(shape)
         atoms = build_nbo2f(shape, ax, ay, az)
         decompose(atoms, N=shape, species="O")
 
@@ -446,33 +308,12 @@ def test_decompose_cache_hit_with_new_symbols_same_positions(monkeypatch, shape)
     monkeypatch.setattr(dm, "_build_indices", counting_build)
     dm._indices_cached.cache_clear()
 
-    Nx, Ny, Nz = shape
-    ax_first = (
-        perfect_oof_chain(shape, phase=2, direction="x")
-        if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay_first = (
-        perfect_oof_chain(shape, phase=0, direction="y")
-        if Ny % 3 == 0 else np.zeros((Nx, Nz, Ny), dtype=int)
-    )
-    az_first = (
-        perfect_oof_chain(shape, phase=1, direction="z")
-        if Nz % 3 == 0 else np.zeros((Nx, Ny, Nz), dtype=int)
-    )
+    ax_first, _, az_first = dummy_chain_arrays(shape)
+    ay_first = oof_or_zero(shape, phase=0, direction="y")
     atoms_first = build_nbo2f(shape, ax_first, ay_first, az_first)
 
-    ax_second = (
-        perfect_oof_chain(shape, phase=0, direction="x")
-        if Nx % 3 == 0 else np.zeros((Ny, Nz, Nx), dtype=int)
-    )
-    ay_second = (
-        perfect_oof_chain(shape, phase=1, direction="y")
-        if Ny % 3 == 0 else np.zeros((Nx, Nz, Ny), dtype=int)
-    )
-    az_second = (
-        perfect_oof_chain(shape, phase=2, direction="z")
-        if Nz % 3 == 0 else np.zeros((Nx, Ny, Nz), dtype=int)
-    )
+    ax_second, _, az_second = dummy_chain_arrays(shape)
+    ay_second = oof_or_zero(shape, phase=1, direction="y")
     atoms_second = build_nbo2f(shape, ax_second, ay_second, az_second)
     # Positions and cell are identical (build_nbo2f uses the same lattice
     # geometry regardless of the chain arrays, only the species symbols
