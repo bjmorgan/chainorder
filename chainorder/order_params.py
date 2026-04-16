@@ -30,14 +30,39 @@ def motif_counts(
     Args:
         anion_direction: Binary species array along one chain direction,
             shape (N, N, N).
-        window_length: Length of the sliding window.
+        window_length: Length of the sliding window. Must satisfy
+            ``1 <= window_length <= min(N, 62)`` (see `Raises`).
 
     Returns:
         Dictionary mapping each canonical motif tuple to an integer array of
         shape (N, N) giving per-chain counts.
+
+    Raises:
+        TypeError: If `window_length` is not an integer.
+        ValueError: If `window_length` is outside the valid range. The upper
+            bound of 62 is a hard limit of the int64 bit-packing used for
+            the canonicalisation table; the upper bound of N is geometric
+            (larger windows would wrap around the chain and alias).
     """
+    if not isinstance(window_length, (int, np.integer)):
+        raise TypeError(
+            f"window_length must be an integer, got "
+            f"{type(window_length).__name__}."
+        )
     N = anion_direction.shape[-1]
-    w = window_length
+    w = int(window_length)
+    if w < 1:
+        raise ValueError(f"window_length must be >= 1, got {w}.")
+    if w > N:
+        raise ValueError(
+            f"window_length ({w}) exceeds chain length N={N}; windows would "
+            f"wrap around the chain and alias. Use window_length <= N."
+        )
+    if w > 62:
+        raise ValueError(
+            f"window_length ({w}) exceeds the int64 bit-packing limit of 62. "
+            f"This limit is well above any realistic chain length."
+        )
 
     # Build (N, w) index array: windows[start, offset] -> position in chain.
     window_idx = (np.arange(N)[:, None] + np.arange(w)[None, :]) % N   # (N, w)
