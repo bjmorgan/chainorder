@@ -247,6 +247,56 @@ def test_inter_chain_correlation_raises_when_N_not_divisible_by_3():
         order_params.inter_chain_correlation(arr)
 
 
+def test_inter_chain_correlation_rotating_phase():
+    """Chains with OOF phase = a mod 3 give G[da, db] = exp(2j*pi*da/3).
+
+    Analytical ground truth, independent of db. This catches sign flips,
+    missing `conj`, and lateral-axis confusion that the uniform-phase test
+    cannot distinguish from correct.
+    """
+    N = 6
+    arr = np.zeros((N, N, N), dtype=int)
+    for a in range(N):
+        phase = a % 3
+        for i in range(N):
+            if i % 3 == phase:
+                arr[a, :, i] = 1
+    G = order_params.inter_chain_correlation(arr)
+    for da in range(N):
+        expected = np.exp(2j * np.pi * da / 3)
+        np.testing.assert_allclose(
+            G[da, :], np.full(N, expected), atol=1e-12,
+            err_msg=f"G[{da}, :] mismatch",
+        )
+
+
+def test_inter_chain_correlation_random_input_small_off_peak():
+    """Random binary input: |G| ~ 0 off the origin (within statistical noise)."""
+    N = 12
+    rng = np.random.default_rng(0)
+    arr = rng.integers(0, 2, size=(N, N, N))
+    G = order_params.inter_chain_correlation(arr)
+    # G[0, 0] is exactly 1 by construction.
+    np.testing.assert_allclose(G[0, 0], 1.0, atol=1e-12)
+    # Off-origin: expected scale ~ 1/N for N-by-N independent complex samples,
+    # so mean |G| should be well below 1. Use a generous bound that still
+    # detects any gross formulation error.
+    off_peak_mask = np.ones((N, N), dtype=bool)
+    off_peak_mask[0, 0] = False
+    assert np.abs(G[off_peak_mask]).mean() < 0.3
+
+
+def test_inter_chain_correlation_raises_on_zero_amplitude():
+    """All-O (or all-F) input has |phi| = 0 everywhere; correlation undefined."""
+    N = 6
+    arr = np.zeros((N, N, N), dtype=int)
+    with pytest.raises(ValueError, match="undefined"):
+        order_params.inter_chain_correlation(arr)
+    arr_full = np.ones((N, N, N), dtype=int)
+    with pytest.raises(ValueError, match="undefined"):
+        order_params.inter_chain_correlation(arr_full)
+
+
 def test_structure_factor_only_x_chains_ordered_peaks_on_kx_axis():
     """x-chains OOF, y/z empty: peaks only on the kx reciprocal axis."""
     N = 6
