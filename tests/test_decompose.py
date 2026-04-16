@@ -251,7 +251,7 @@ def test_decompose_rebuilds_when_n_changes(monkeypatch):
     assert call_count["n"] == 2
 
 
-def test_decompose_scalar_and_tuple_N_equivalent(monkeypatch):
+def test_decompose_scalar_and_tuple_N_equivalent():
     """decompose(atoms, N=3) and decompose(atoms, N=(3, 3, 3)) produce
     bit-identical ChainArrays and hit the same cache entry."""
     import importlib
