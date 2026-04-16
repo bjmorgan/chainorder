@@ -137,6 +137,28 @@ def test_along_chain_correlation_all_zero():
     np.testing.assert_allclose(g, 0, atol=1e-12)
 
 
+def test_along_chain_correlation_perfect_ofof():
+    """Perfect OFOF (mean 1/2): g(0) = g(2) = 1/4, g(1) = g(3) = -1/4."""
+    N = 6
+    arr = perfect_ofof_chain(N)
+    g = order_params.along_chain_correlation(arr)
+    # <s_i s_{i+0}> = <s^2> = <s> = 1/2 (binary). 1/2 - (1/2)^2 = 1/4.
+    np.testing.assert_allclose(g[0], 0.25, atol=1e-12)
+    # <s_i s_{i+1}> = 0 (alternating). 0 - 1/4 = -1/4.
+    np.testing.assert_allclose(g[1], -0.25, atol=1e-12)
+    # <s_i s_{i+2}> = 1/2 (shift by period). 1/2 - 1/4 = 1/4.
+    np.testing.assert_allclose(g[2], 0.25, atol=1e-12)
+    np.testing.assert_allclose(g[3], -0.25, atol=1e-12)
+
+
+def test_along_chain_correlation_all_one():
+    """All-F (saturated): g(r) = 0 for all r (<s> = 1, so <s * s> - <s>^2 = 0)."""
+    N = 6
+    arr = np.ones((N, N, N), dtype=int)
+    g = order_params.along_chain_correlation(arr)
+    np.testing.assert_allclose(g, 0, atol=1e-12)
+
+
 def test_inter_chain_correlation_all_same_phase():
     """All chains have identical OOF phase -> |G[dj, dk]| = 1 everywhere."""
     N = 6
