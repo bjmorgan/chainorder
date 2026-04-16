@@ -4,6 +4,41 @@ from chainorder import decompose
 from tests._fixtures import build_nbo2f, perfect_oof_chain
 
 
+def test_direction_enum_is_numpy_indexable():
+    """Direction.X/Y/Z must equal 0/1/2 and index numpy arrays directly.
+
+    Load-bearing for the design choice in PR_review.md: using IntEnum
+    instead of a plain Enum so the members can be used as numpy indices
+    at zero runtime cost.
+    """
+    from chainorder.decompose import Direction
+    assert int(Direction.X) == 0
+    assert int(Direction.Y) == 1
+    assert int(Direction.Z) == 2
+    probe = np.array([10, 20, 30])
+    assert probe[Direction.X] == 10
+    assert probe[Direction.Y] == 20
+    assert probe[Direction.Z] == 30
+
+
+def test_chain_arrays_supports_positional_unpacking():
+    """ChainArrays is a NamedTuple, so ax, ay, az = result still works.
+
+    This is the backwards-compatibility guarantee the NamedTuple design
+    rests on: the named-field upgrade does not break callers that unpack.
+    """
+    N = 3
+    ax_in = perfect_oof_chain(N, phase=2)
+    ay_in = perfect_oof_chain(N, phase=0)
+    az_in = perfect_oof_chain(N, phase=1)
+    atoms = build_nbo2f(N, ax_in, ay_in, az_in)
+    result = decompose(atoms, N=N)
+    ax, ay, az = result
+    assert ax is result[0] is result.x
+    assert ay is result[1] is result.y
+    assert az is result[2] is result.z
+
+
 def test_decompose_returns_input_species_arrays():
     """Round-trip: build Atoms from known chain arrays, decompose, recover arrays."""
     N = 3
