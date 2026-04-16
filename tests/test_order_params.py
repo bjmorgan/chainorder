@@ -359,3 +359,17 @@ def test_structure_factor_raises_on_shape_mismatch():
     bad = np.zeros((N, N, N + 1), dtype=int)
     with pytest.raises(ValueError, match="same shape"):
         order_params.structure_factor(arr, arr, bad)
+
+
+def test_structure_factor_raises_on_non_cubic_shape():
+    """Three equal-shaped but non-cubic inputs should still raise."""
+    arr = np.zeros((3, 4, 5), dtype=int)
+    with pytest.raises(ValueError, match="cubic 3D"):
+        order_params.structure_factor(arr, arr, arr)
+
+
+def test_structure_factor_raises_on_wrong_rank():
+    """Non-3D inputs should raise before numpy's own broadcasting error."""
+    arr = np.zeros((6, 6), dtype=int)    # 2D
+    with pytest.raises(ValueError, match="cubic 3D"):
+        order_params.structure_factor(arr, arr, arr)

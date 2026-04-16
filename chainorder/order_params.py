@@ -228,6 +228,13 @@ def structure_factor(
             f"All three sublattice arrays must have the same shape; got "
             f"{anion_x.shape}, {anion_y.shape}, {anion_z.shape}."
         )
+    if anion_x.ndim != 3 or not (
+        anion_x.shape[0] == anion_x.shape[1] == anion_x.shape[2]
+    ):
+        raise ValueError(
+            f"Sublattice arrays must be cubic 3D (shape (N, N, N)), got "
+            f"shape {anion_x.shape}."
+        )
     N = anion_x.shape[-1]
     k = np.arange(N)
 
