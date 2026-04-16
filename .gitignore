@@ -13,3 +13,9 @@ dist/
 
 # Design specs and plans are local dev notes (per project convention)
 docs/superpowers/
+
+# Personal conventions file (local only)
+CLAUDE.md
+
+# Review working documents (local only)
+PR_review.md
