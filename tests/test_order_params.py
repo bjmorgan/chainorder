@@ -37,6 +37,30 @@ def test_chain_fft_perfect_ofof_peaks_at_period_2():
     np.testing.assert_allclose(np.abs(fft[..., k]), 0.5, atol=1e-12)
 
 
+def test_chain_fft_normalisation_period_4_in_N_12():
+    """One F per period-4 at N=12: |phi_{N/4}| = 1/4."""
+    N = 12
+    p = 4
+    arr = np.zeros((N, N, N), dtype=int)
+    # F at i in {3, 7, 11}: one per period p=4.
+    for i in range(N):
+        if i % p == p - 1:
+            arr[:, :, i] = 1
+    fft = order_params.chain_fft(arr)
+    np.testing.assert_allclose(np.abs(fft[..., 0]), 1.0 / p, atol=1e-12)
+    np.testing.assert_allclose(np.abs(fft[..., N // p]), 1.0 / p, atol=1e-12)
+
+
+def test_chain_fft_normalisation_period_3_in_N_9():
+    """One F per period-3 at N=9: |phi_{N/3}| = 1/3."""
+    N = 9
+    p = 3
+    arr = perfect_oof_chain(N, phase=2)
+    fft = order_params.chain_fft(arr)
+    np.testing.assert_allclose(np.abs(fft[..., 0]), 1.0 / p, atol=1e-12)
+    np.testing.assert_allclose(np.abs(fft[..., N // p]), 1.0 / p, atol=1e-12)
+
+
 def test_motif_counts_perfect_oof_window_3():
     """Perfect OOF chain: all length-3 windows are cyclic class (0, 0, 1),
     total N per chain."""
