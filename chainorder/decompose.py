@@ -26,9 +26,12 @@ class Direction(IntEnum):
 class ChainArrays(NamedTuple):
     """Three per-direction anion occupation arrays from a ReO3-type supercell.
 
-    Each field is a shape-``(N, N, N)`` ``int64`` array with values in
-    ``{0, 1}``: ``1`` at sites whose species matches the `species` argument
-    passed to `decompose`, ``0`` elsewhere. The last axis is always
+    Each field is an ``int64`` array with values in ``{0, 1}``, with
+    shape specific to its direction -- ``(Ny, Nz, Nx)`` for ``x``,
+    ``(Nx, Nz, Ny)`` for ``y``, ``(Nx, Ny, Nz)`` for ``z``. In the cubic
+    case ``Nx == Ny == Nz == N`` these all reduce to ``(N, N, N)``. Values
+    are ``1`` at sites whose species matches the `species` argument passed
+    to `decompose`, ``0`` elsewhere. The last axis is always
     along-chain; the first two indices identify the chain's lateral
     position in the sublattice:
 
@@ -89,10 +92,12 @@ def decompose(
             `"F"`; all other anion species are flagged 0.
 
     Returns:
-        A `ChainArrays` namedtuple with fields `x`, `y`, `z`, each a shape
-        `(N, N, N)` integer array. For each array the first two indices
-        identify the chain and the last index is position along the chain.
-        Supports positional unpacking.
+        A `ChainArrays` namedtuple with fields `x`, `y`, `z`, each an
+        integer array with direction-specific shape: `x` is `(Ny, Nz, Nx)`,
+        `y` is `(Nx, Nz, Ny)`, `z` is `(Nx, Ny, Nz)`. For each array the
+        first two indices identify the chain and the last index is
+        position along the chain. In the cubic case `Nx == Ny == Nz == N`
+        all three reduce to `(N, N, N)`. Supports positional unpacking.
 
     Raises:
         ValueError: On any of the validation failures below -- invalid `N`
@@ -179,7 +184,7 @@ def _indices_cached(
     shape: tuple[int, int, int],
     origin: tuple[float, float, float],
 ) -> np.ndarray:
-    """Cache the decomposition map for one ``(positions, cell, N, origin)`` key.
+    """Cache the decomposition map for one ``(positions, cell, shape, origin)`` key.
 
     ``positions`` and ``cell`` are passed as raw bytes so that the key is
     hashable and compares by full-precision binary content. Single-entry cache
@@ -344,7 +349,7 @@ def _apply_indices(
     indices: np.ndarray,
     species: str,
 ) -> ChainArrays:
-    """Apply a cached index map to produce three (N, N, N) binary arrays.
+    """Apply a cached index map to produce three per-direction binary arrays.
 
     Args:
         symbols: Chemical symbols per atom, shape (n_atoms,).
