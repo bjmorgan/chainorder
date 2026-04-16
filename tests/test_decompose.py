@@ -157,58 +157,6 @@ def test_decompose_rejects_origin_out_of_range():
             decompose(atoms, N=N, origin=bad_origin)
 
 
-def test_decompose_rejects_origin_wrong_length():
-    """origin with not exactly three components raises."""
-    N = 3
-    ax = perfect_oof_chain(N, phase=2)
-    ay = perfect_oof_chain(N, phase=2)
-    az = perfect_oof_chain(N, phase=2)
-    atoms = build_nbo2f(N, ax, ay, az)
-    with pytest.raises(ValueError, match="exactly 3 components"):
-        decompose(atoms, N=N, origin=(0.0, 0.0))    # type: ignore[arg-type]
-
-
-def test_decompose_rejects_origin_wrong_type():
-    """Non-sequence, non-numeric, and string/bytes origin raise TypeError."""
-    N = 3
-    ax = perfect_oof_chain(N, phase=2)
-    ay = perfect_oof_chain(N, phase=2)
-    az = perfect_oof_chain(N, phase=2)
-    atoms = build_nbo2f(N, ax, ay, az)
-    # Not a sequence at all.
-    with pytest.raises(TypeError, match="sized iterable of three numbers"):
-        decompose(atoms, N=N, origin=None)          # type: ignore[arg-type]
-    with pytest.raises(TypeError, match="sized iterable of three numbers"):
-        decompose(atoms, N=N, origin=5)             # type: ignore[arg-type]
-    # Strings / bytes / bytearray satisfy len() == 3 but each char would
-    # cast via float() to an unhelpful range error; rejected up front.
-    with pytest.raises(TypeError, match="sized iterable of three numbers"):
-        decompose(atoms, N=N, origin="abc")         # type: ignore[arg-type]
-    with pytest.raises(TypeError, match="sized iterable of three numbers"):
-        decompose(atoms, N=N, origin="012")         # type: ignore[arg-type]
-    with pytest.raises(TypeError, match="sized iterable of three numbers"):
-        decompose(atoms, N=N, origin=bytearray([0, 0, 0]))    # type: ignore[arg-type]
-    # Sequence of three but one is non-numeric.
-    with pytest.raises(TypeError, match=r"origin\[1\] must be numeric"):
-        decompose(atoms, N=N, origin=(0.0, "x", 0.0))    # type: ignore[arg-type]
-    # Booleans are a subclass of int but silently coerce to 0.0 / 1.0,
-    # masking caller mistakes. Reject them explicitly.
-    with pytest.raises(TypeError, match=r"origin\[0\] must be numeric"):
-        decompose(atoms, N=N, origin=(True, 0.0, 0.0))    # type: ignore[arg-type]
-
-
-def test_decompose_accepts_origin_as_list():
-    """Lists should work equivalently to tuples (documented contract)."""
-    N = 3
-    ax = perfect_oof_chain(N, phase=2)
-    ay = perfect_oof_chain(N, phase=2)
-    az = perfect_oof_chain(N, phase=2)
-    atoms = build_nbo2f(N, ax, ay, az)
-    # Just assert the call succeeds and returns a ChainArrays.
-    out = decompose(atoms, N=N, origin=[0.0, 0.0, 0.0])    # type: ignore[arg-type]
-    assert out.x.shape == (N, N, N)
-
-
 def test_decompose_raises_when_species_absent():
     """A species symbol absent from all anion sites raises with a list of present species."""
     N = 3

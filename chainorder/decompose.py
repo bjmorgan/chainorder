@@ -92,20 +92,15 @@ def decompose(
         Supports positional unpacking.
 
     Raises:
-        TypeError: If `origin` is not a sized iterable of three numbers
-            (e.g. `None`, an int, a string, or bytes).
         ValueError: On any of the validation failures below -- invalid `N`
-            (non-integer or non-positive); `origin` of wrong length, or
-            with a component outside `[0.0, 1.0)`; cell containing non-
-            finite values, not orthorhombic, non-positive on the diagonal,
-            or not cubic; wrong cation or anion count for the given `N`;
-            any atom off-lattice (integer or half-integer) beyond
-            tolerance (note: this includes passing the wrong `origin` --
-            e.g. default `(0.0, 0.0, 0.0)` on a body-centred structure
-            where the cations sit at `(0.5, 0.5, 0.5)` -- because the
-            assumed and actual sublattice positions then disagree);
-            `species` absent from all anion sites; or a slot collision
-            during assignment.
+            (non-integer or non-positive); `origin` component outside
+            `[0.0, 1.0)`; cell containing non-finite values, not
+            orthorhombic, non-positive on the diagonal, or not cubic;
+            wrong cation or anion count for the given `N`; any atom off-
+            lattice (including the common case of passing the wrong
+            `origin` -- e.g. `(0.0, 0.0, 0.0)` on a body-centred
+            structure); `species` absent from all anion sites; or a slot
+            collision during assignment.
     """
     if not isinstance(N, (int, np.integer)) or N < 1:
         raise ValueError(f"N must be a positive integer, got {N!r}.")
@@ -121,58 +116,18 @@ def decompose(
 def _validate_origin(
     origin: tuple[float, float, float],
 ) -> tuple[float, float, float]:
-    """Normalise and validate the `origin` argument to `decompose`.
+    """Normalise `origin` to a float 3-tuple with each component in `[0, 1)`.
 
-    Casts each component to `float` (so `(0, 0, 0)` and `(0.0, 0.0, 0.0)`
-    produce the same hashable cache key) and enforces that each component
-    lies in `[0.0, 1.0)` -- values outside this range would wrap silently
-    through the `frac % 1.0` operation in `_build_indices`.
-
-    Raises:
-        TypeError: If `origin` is not a sized iterable (e.g. `None`,
-            `int`), or contains a non-numeric component. Strings, bytes,
-            and bytearrays are explicitly rejected even though they
-            satisfy `len() == 3`, because per-character `float()` would
-            accept e.g. `"012"`. Booleans are likewise rejected because
-            they subclass `int` and would silently cast to `0.0 / 1.0`.
-        ValueError: If `origin` has the wrong number of components, or if
-            any component lies outside `[0.0, 1.0)`.
+    The float cast ensures `(0, 0, 0)` and `(0.0, 0.0, 0.0)` share an
+    lru_cache key. Out-of-range values are rejected because they would
+    wrap silently through the `frac % 1.0` operation in `_build_indices`;
+    the caller should wrap deliberately if they want periodic equivalence.
     """
-    if isinstance(origin, (str, bytes, bytearray)):
-        raise TypeError(
-            f"origin must be a sized iterable of three numbers, got "
-            f"{type(origin).__name__}."
-        )
-    try:
-        length = len(origin)
-    except TypeError as exc:
-        raise TypeError(
-            f"origin must be a sized iterable of three numbers, got "
-            f"{type(origin).__name__}."
-        ) from exc
-    if length != 3:
-        raise ValueError(
-            f"origin must have exactly 3 components, got {length}."
-        )
-    components: list[float] = []
-    for i, v in enumerate(origin):
-        # bool must precede (int, float) because bool is a subclass of int.
-        if isinstance(v, bool) or not isinstance(
-            v, (int, float, np.integer, np.floating)
-        ):
-            raise TypeError(
-                f"origin[{i}] must be numeric (int or float), got "
-                f"{type(v).__name__}."
-            )
-        components.append(float(v))
-    a, b, c = components
+    a, b, c = (float(origin[0]), float(origin[1]), float(origin[2]))
     for name, v in (("origin[0]", a), ("origin[1]", b), ("origin[2]", c)):
         if not 0.0 <= v < 1.0:
             raise ValueError(
-                f"{name} must lie in [0.0, 1.0), got {v}. Origin is "
-                f"expressed in unit-cell fractional coordinates; values "
-                f"outside this range are equivalent under periodicity and "
-                f"must be wrapped by the caller."
+                f"{name} must lie in [0.0, 1.0), got {v}."
             )
     return (a, b, c)
 
