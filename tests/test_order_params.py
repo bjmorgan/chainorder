@@ -10,6 +10,13 @@ ROT_SHAPES: list[tuple[int, int, int]] = [(3, 3, 3), (6, 6, 6), (4, 4, 6)]
 CUBIC_SHAPES: list[tuple[int, int, int]] = [(3, 3, 3), (6, 6, 6)]
 # Cubic; used by tests that physically require equal axes.
 
+ICC_SHAPES: list[tuple[int, int, int]] = [(3, 3, 3), (6, 6, 6), (2, 4, 6)]
+# Chain-direction (last axis) divisible by 3; lateral shape arbitrary.
+
+ICC_ROT_SHAPES: list[tuple[int, int, int]] = [(3, 3, 3), (6, 6, 6), (3, 4, 6)]
+# Nx divisible by 3 (required by rotating_phase analytical identity);
+# lateral non-cubic in the (3, 4, 6) case.
+
 
 def test_chain_fft_perfect_oof_peaks_at_period_3():
     """Perfect OOF chain (N divisible by 3): |phi| = 1/3 at k = N/3."""
@@ -249,21 +256,23 @@ def test_along_chain_correlation_all_one():
     np.testing.assert_allclose(g, 0, atol=1e-12)
 
 
-def test_inter_chain_correlation_all_same_phase():
+@pytest.mark.parametrize("shape", ICC_SHAPES)
+def test_inter_chain_correlation_all_same_phase(shape):
     """All chains have identical OOF phase -> |G[dj, dk]| = 1 everywhere."""
-    N = 6
-    arr = perfect_oof_chain(N, phase=2)     # every chain has phase 2
+    Nx, Ny, Nz = shape
+    arr = perfect_oof_chain(shape, phase=2, direction="z")
     G = order_params.inter_chain_correlation(arr)
-    assert G.shape == (N, N)
+    assert G.shape == (Nx, Ny)
     np.testing.assert_allclose(np.abs(G), 1.0, atol=1e-12)
 
 
-def test_inter_chain_correlation_zero_lag_is_one():
+@pytest.mark.parametrize("shape", ICC_SHAPES)
+def test_inter_chain_correlation_zero_lag_is_one(shape):
     """G[0, 0] = <exp(i * 0)> = 1 always (trivial)."""
-    N = 6
+    Nx, Ny, Nz = shape
     rng = np.random.default_rng(0)
     # Random OOF-like array (not strictly periodic, but OK for G[0,0] test)
-    arr = rng.integers(0, 2, size=(N, N, N))
+    arr = rng.integers(0, 2, size=(Nx, Ny, Nz))
     G = order_params.inter_chain_correlation(arr)
     np.testing.assert_allclose(G[0, 0], 1.0, atol=1e-12)
 
@@ -276,43 +285,60 @@ def test_inter_chain_correlation_raises_when_N_not_divisible_by_3():
         order_params.inter_chain_correlation(arr)
 
 
-def test_inter_chain_correlation_rotating_phase():
+@pytest.mark.parametrize("shape", ICC_ROT_SHAPES)
+def test_inter_chain_correlation_rotating_phase(shape):
     """Chains with OOF phase = a mod 3 give G[da, db] = exp(2j*pi*da/3).
 
     Analytical ground truth, independent of db. This catches sign flips,
     missing `conj`, and lateral-axis confusion that the uniform-phase test
     cannot distinguish from correct.
     """
-    N = 6
-    arr = np.zeros((N, N, N), dtype=int)
-    for a in range(N):
+    Nx, Ny, Nz = shape
+    arr = np.zeros((Nx, Ny, Nz), dtype=int)
+    for a in range(Nx):
         phase = a % 3
-        for i in range(N):
+        for i in range(Nz):
             if i % 3 == phase:
                 arr[a, :, i] = 1
     G = order_params.inter_chain_correlation(arr)
-    for da in range(N):
+    for da in range(Nx):
         expected = np.exp(2j * np.pi * da / 3)
         np.testing.assert_allclose(
-            G[da, :], np.full(N, expected), atol=1e-12,
-            err_msg=f"G[{da}, :] mismatch",
+            G[da, :], np.full(Ny, expected), atol=1e-12,
+            err_msg=f"G[{da}, :] mismatch for shape={shape}",
         )
 
 
-def test_inter_chain_correlation_random_input_small_off_peak():
+@pytest.mark.parametrize("shape", ICC_SHAPES)
+def test_inter_chain_correlation_random_input_small_off_peak(shape):
     """Random binary input: |G| ~ 0 off the origin (within statistical noise)."""
-    N = 12
+    Nx, Ny, Nz = shape
     rng = np.random.default_rng(0)
-    arr = rng.integers(0, 2, size=(N, N, N))
+    arr = rng.integers(0, 2, size=(Nx, Ny, Nz))
     G = order_params.inter_chain_correlation(arr)
     # G[0, 0] is exactly 1 by construction.
     np.testing.assert_allclose(G[0, 0], 1.0, atol=1e-12)
     # Off-origin: expected scale ~ 1/N for N-by-N independent complex samples,
     # so mean |G| should be well below 1. Use a generous bound that still
     # detects any gross formulation error.
-    off_peak_mask = np.ones((N, N), dtype=bool)
+    off_peak_mask = np.ones((Nx, Ny), dtype=bool)
     off_peak_mask[0, 0] = False
     assert np.abs(G[off_peak_mask]).mean() < 0.3
+
+
+def test_inter_chain_correlation_lateral_shape_not_divisible_by_3():
+    """Lateral plane can be any shape; only the chain-direction length
+    must be divisible by 3."""
+    # Chain-direction (last axis) = 6 (divisible by 3). Lateral plane is
+    # (2, 4) -- neither divisible by 3.
+    arr = np.zeros((2, 4, 6), dtype=int)
+    for i in range(6):
+        if i % 3 == 2:
+            arr[:, :, i] = 1
+    G = order_params.inter_chain_correlation(arr)
+    assert G.shape == (2, 4)
+    # All chains have identical OOF phase -> |G| = 1 everywhere.
+    np.testing.assert_allclose(np.abs(G), 1.0, atol=1e-12)
 
 
 def test_inter_chain_correlation_raises_on_zero_amplitude():
