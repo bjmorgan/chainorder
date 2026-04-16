@@ -115,13 +115,13 @@ def along_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     N = anion_direction.shape[-1]
     s_mean = float(anion_direction.mean())
 
-    # Vectorised: build a (N_r, N, N, N) stack of r-shifted arrays then average.
-    # Memory cost is O(N^4); trivial for typical N (<=24).
-    r = np.arange(N)
-    shift_idx = (np.arange(N)[None, :] + r[:, None]) % N               # (N_r, N)
-    shifted = anion_direction[..., shift_idx]                          # (N, N, N_r, N)
-    product = anion_direction[..., None, :] * shifted                  # (N, N, N_r, N)
-    g = product.mean(axis=(0, 1, 3)) - s_mean ** 2                     # (N_r,)
+    # Wiener-Khinchin: g(r) = IFFT(|FFT(s)|^2) / N, averaged over chains,
+    # minus the mean-density contribution. O(N^3 log N) instead of the O(N^4)
+    # broadcast-indexed stack of r-shifted copies.
+    fft_per_chain = np.fft.fft(anion_direction, axis=-1)               # (N, N, N)
+    power = np.abs(fft_per_chain) ** 2                                 # (N, N, N)
+    autocorr = np.fft.ifft(power, axis=-1).real / N                    # (N, N, N)
+    g = autocorr.mean(axis=(0, 1)) - s_mean ** 2                       # (N,)
     return g
 
 
