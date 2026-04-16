@@ -18,36 +18,47 @@ ICC_ROT_SHAPES: list[tuple[int, int, int]] = [(3, 3, 3), (6, 6, 6), (3, 4, 6)]
 # lateral non-cubic in the (3, 4, 6) case.
 
 
-def test_chain_fft_perfect_oof_peaks_at_period_3():
-    """Perfect OOF chain (N divisible by 3): |phi| = 1/3 at k = N/3."""
-    N = 6
-    arr = perfect_oof_chain(N, phase=2)
+@pytest.mark.parametrize("shape", SHAPES)
+def test_chain_fft_perfect_oof_peaks_at_period_3(shape):
+    """Perfect OOF chain (Nz divisible by 3): |phi| = 1/3 at k = Nz/3."""
+    Nx, Ny, Nz = shape
+    if Nz % 3 != 0:
+        pytest.skip(f"Nz={Nz} not divisible by 3")
+    arr = perfect_oof_chain(shape, phase=2, direction="z")
     fft = order_params.chain_fft(arr)
-    assert fft.shape == (N, N, N)
-    k = N // 3
-    # |phi| at k = N/3 should be 1/3 for every chain
+    assert fft.shape == (Nx, Ny, Nz)
+    k = Nz // 3
+    # |phi| at k = Nz/3 should be 1/3 for every chain
     np.testing.assert_allclose(np.abs(fft[..., k]), 1.0 / 3.0, atol=1e-12)
 
 
-def test_chain_fft_perfect_oof_other_components_zero():
+@pytest.mark.parametrize("shape", SHAPES)
+def test_chain_fft_perfect_oof_other_components_zero(shape):
     """Non-period-3 Fourier components should be zero (except DC)."""
-    N = 6
-    arr = perfect_oof_chain(N, phase=2)
+    Nx, Ny, Nz = shape
+    if Nz % 3 != 0:
+        pytest.skip(f"Nz={Nz} not divisible by 3")
+    if Nz // 2 == Nz // 3:
+        pytest.skip(f"Nz={Nz}: Nz//2 coincides with the OOF peak at Nz//3")
+    arr = perfect_oof_chain(shape, phase=2, direction="z")
     fft = order_params.chain_fft(arr)
     # DC component (k=0) is the mean = 1/3
     np.testing.assert_allclose(np.abs(fft[..., 0]), 1.0 / 3.0, atol=1e-12)
-    # k=N/3 is the OOF component (non-zero)
-    # k=N/2 (OFOF) should be zero
-    np.testing.assert_allclose(fft[..., N // 2], 0, atol=1e-12)
+    # k=Nz/3 is the OOF component (non-zero)
+    # k=Nz/2 (OFOF) should be zero for an OOF pattern
+    np.testing.assert_allclose(fft[..., Nz // 2], 0, atol=1e-12)
 
 
-def test_chain_fft_perfect_ofof_peaks_at_period_2():
-    """Perfect OFOF chain (N even): |phi| peaks at k = N/2."""
-    N = 6
-    arr = perfect_ofof_chain(N)
+@pytest.mark.parametrize("shape", SHAPES)
+def test_chain_fft_perfect_ofof_peaks_at_period_2(shape):
+    """Perfect OFOF chain (Nz even): |phi| peaks at k = Nz/2."""
+    Nx, Ny, Nz = shape
+    if Nz % 2 != 0:
+        pytest.skip(f"Nz={Nz} not even")
+    arr = perfect_ofof_chain(shape, direction="z")
     fft = order_params.chain_fft(arr)
-    k = N // 2
-    # Mean is 1/2 so DC = 1/2. At k=N/2, pattern is [0,1,0,1,0,1] so FFT gives 1/2.
+    k = Nz // 2
+    # Mean is 1/2 so DC = 1/2. At k=Nz/2, pattern [0,1,0,1,...] gives 1/2.
     np.testing.assert_allclose(np.abs(fft[..., k]), 0.5, atol=1e-12)
 
 
@@ -65,16 +76,17 @@ def test_chain_fft_normalisation_period_4_in_N_12():
     np.testing.assert_allclose(np.abs(fft[..., N // p]), 1.0 / p, atol=1e-12)
 
 
-def test_chain_fft_is_hermitian_for_real_input():
-    """|F_k| == |F_{N-k}| for real input. Catches any regression in the
+@pytest.mark.parametrize("shape", SHAPES)
+def test_chain_fft_is_hermitian_for_real_input(shape):
+    """|F_k| == |F_{Nz-k}| for real input. Catches any regression in the
     FFT axis or direction."""
-    N = 6
+    Nx, Ny, Nz = shape
     rng = np.random.default_rng(7)
-    arr = rng.integers(0, 2, size=(N, N, N))
+    arr = rng.integers(0, 2, size=(Nx, Ny, Nz))
     fft = order_params.chain_fft(arr)
-    for k in range(1, N):
+    for k in range(1, Nz):
         np.testing.assert_allclose(
-            np.abs(fft[..., k]), np.abs(fft[..., N - k]), atol=1e-12,
+            np.abs(fft[..., k]), np.abs(fft[..., Nz - k]), atol=1e-12,
             err_msg=f"Hermitian symmetry broken at k={k}",
         )
 
@@ -89,46 +101,54 @@ def test_chain_fft_normalisation_period_3_in_N_9():
     np.testing.assert_allclose(np.abs(fft[..., N // p]), 1.0 / p, atol=1e-12)
 
 
-def test_motif_counts_perfect_oof_window_3():
+@pytest.mark.parametrize("shape", SHAPES)
+def test_motif_counts_perfect_oof_window_3(shape):
     """Perfect OOF chain: all length-3 windows are cyclic class (0, 0, 1),
-    total N per chain."""
-    N = 6
-    arr = perfect_oof_chain(N, phase=2)
+    total Nz per chain."""
+    Nx, Ny, Nz = shape
+    if Nz % 3 != 0:
+        pytest.skip(f"Nz={Nz} not divisible by 3")
+    arr = perfect_oof_chain(shape, phase=2, direction="z")
     counts = order_params.motif_counts(arr, window_length=3)
     # One F in every triplet -> canonical (0, 0, 1)
     assert (0, 0, 1) in counts
-    np.testing.assert_array_equal(counts[(0, 0, 1)], np.full((N, N), N))
+    np.testing.assert_array_equal(counts[(0, 0, 1)], np.full((Nx, Ny), Nz))
     # Other classes should be absent or zero
     for cls in [(0, 0, 0), (0, 1, 1), (1, 1, 1)]:
         assert cls not in counts or np.all(counts[cls] == 0)
 
 
-def test_motif_counts_perfect_ofof_window_2():
-    """Perfect OFOF chain: all length-2 windows are (0, 1); total N per chain."""
-    N = 6
-    arr = perfect_ofof_chain(N)
+@pytest.mark.parametrize("shape", SHAPES)
+def test_motif_counts_perfect_ofof_window_2(shape):
+    """Perfect OFOF chain: all length-2 windows are (0, 1); total Nz per chain."""
+    Nx, Ny, Nz = shape
+    if Nz % 2 != 0:
+        pytest.skip(f"Nz={Nz} not even")
+    arr = perfect_ofof_chain(shape, direction="z")
     counts = order_params.motif_counts(arr, window_length=2)
     assert (0, 1) in counts
-    np.testing.assert_array_equal(counts[(0, 1)], np.full((N, N), N))
+    np.testing.assert_array_equal(counts[(0, 1)], np.full((Nx, Ny), Nz))
 
 
-def test_motif_counts_all_zero_chain():
+@pytest.mark.parametrize("shape", SHAPES)
+def test_motif_counts_all_zero_chain(shape):
     """All-O chain: all length-3 windows are (0, 0, 0)."""
-    N = 6
-    arr = np.zeros((N, N, N), dtype=int)
+    Nx, Ny, Nz = shape
+    arr = np.zeros((Nx, Ny, Nz), dtype=int)
     counts = order_params.motif_counts(arr, window_length=3)
     assert (0, 0, 0) in counts
-    np.testing.assert_array_equal(counts[(0, 0, 0)], np.full((N, N), N))
+    np.testing.assert_array_equal(counts[(0, 0, 0)], np.full((Nx, Ny), Nz))
 
 
-def test_motif_counts_total_equals_N():
-    """Sum of counts across classes equals N per chain, regardless of input."""
-    N = 6
+@pytest.mark.parametrize("shape", SHAPES)
+def test_motif_counts_total_equals_N(shape):
+    """Sum of counts across classes equals Nz per chain, regardless of input."""
+    Nx, Ny, Nz = shape
     rng = np.random.default_rng(42)
-    arr = rng.integers(0, 2, size=(N, N, N))
+    arr = rng.integers(0, 2, size=(Nx, Ny, Nz))
     counts = order_params.motif_counts(arr, window_length=3)
     total = sum(counts.values())
-    np.testing.assert_array_equal(total, np.full((N, N), N))
+    np.testing.assert_array_equal(total, np.full((Nx, Ny), Nz))
 
 
 def test_motif_counts_cyclic_rotations_collapse():
@@ -147,26 +167,32 @@ def test_motif_counts_cyclic_rotations_collapse():
     assert counts[(0, 0, 1)][0, 2] == N
 
 
-def test_motif_counts_window_length_1_is_single_site():
-    """window_length=1 counts single-site species; (0,) + (1,) sum to N per chain."""
-    N = 6
-    arr = perfect_oof_chain(N, phase=2)      # 1/3 of sites are F
+@pytest.mark.parametrize("shape", SHAPES)
+def test_motif_counts_window_length_1_is_single_site(shape):
+    """window_length=1 counts single-site species; (0,) + (1,) sum to Nz per chain."""
+    Nx, Ny, Nz = shape
+    if Nz % 3 != 0:
+        pytest.skip(f"Nz={Nz} not divisible by 3")
+    arr = perfect_oof_chain(shape, phase=2, direction="z")   # 1/3 of sites are F
     counts = order_params.motif_counts(arr, window_length=1)
-    # (0,) is 2N/3 per chain, (1,) is N/3 per chain; they cover all N windows.
+    # (0,) is 2Nz/3 per chain, (1,) is Nz/3 per chain; they cover all Nz windows.
     assert set(counts) == {(0,), (1,)}
-    np.testing.assert_array_equal(counts[(0,)], np.full((N, N), 2 * N // 3))
-    np.testing.assert_array_equal(counts[(1,)], np.full((N, N), N // 3))
+    np.testing.assert_array_equal(counts[(0,)], np.full((Nx, Ny), 2 * Nz // 3))
+    np.testing.assert_array_equal(counts[(1,)], np.full((Nx, Ny), Nz // 3))
 
 
-def test_motif_counts_window_length_equal_N_is_full_chain():
-    """window_length == N: every rotation of the chain is in the same class."""
-    N = 6
-    arr = perfect_oof_chain(N, phase=2)      # chain [0,0,1,0,0,1]
-    counts = order_params.motif_counts(arr, window_length=N)
-    # All N sliding windows rotate through the same N-tuple cyclically, so
-    # every window collapses to the same canonical form; counts sum to N.
+@pytest.mark.parametrize("shape", SHAPES)
+def test_motif_counts_window_length_equal_N_is_full_chain(shape):
+    """window_length == Nz: every rotation of the chain is in the same class."""
+    Nx, Ny, Nz = shape
+    if Nz % 3 != 0:
+        pytest.skip(f"Nz={Nz} not divisible by 3")
+    arr = perfect_oof_chain(shape, phase=2, direction="z")   # chain [0,0,1,...]
+    counts = order_params.motif_counts(arr, window_length=Nz)
+    # All Nz sliding windows rotate through the same Nz-tuple cyclically, so
+    # every window collapses to the same canonical form; counts sum to Nz.
     total = sum(counts.values())
-    np.testing.assert_array_equal(total, np.full((N, N), N))
+    np.testing.assert_array_equal(total, np.full((Nx, Ny), Nz))
     assert len(counts) == 1
 
 
@@ -214,44 +240,55 @@ def test_motif_counts_per_chain_distinct_for_mixed_patterns():
     np.testing.assert_array_equal(counts[(0, 1, 1)][3:, :], N // 2)
 
 
-def test_along_chain_correlation_perfect_oof():
+@pytest.mark.parametrize("shape", SHAPES)
+def test_along_chain_correlation_perfect_oof(shape):
     """Perfect OOF: g(0) = 2/9, g(3) = 2/9 (peaks), g(1) = g(2) = -1/9 (troughs)."""
-    N = 6
-    arr = perfect_oof_chain(N, phase=2)
+    Nx, Ny, Nz = shape
+    if Nz % 3 != 0:
+        pytest.skip(f"Nz={Nz} not divisible by 3")
+    arr = perfect_oof_chain(shape, phase=2, direction="z")
     g = order_params.along_chain_correlation(arr)
-    assert g.shape == (N,)
+    assert g.shape == (Nz,)
     np.testing.assert_allclose(g[0], 2.0 / 9.0, atol=1e-12)
-    np.testing.assert_allclose(g[3], 2.0 / 9.0, atol=1e-12)
     np.testing.assert_allclose(g[1], -1.0 / 9.0, atol=1e-12)
     np.testing.assert_allclose(g[2], -1.0 / 9.0, atol=1e-12)
+    # Period-3 recurrence: g[3] = g[0] etc., but only defined for Nz >= 6.
+    if Nz >= 6:
+        np.testing.assert_allclose(g[3], 2.0 / 9.0, atol=1e-12)
 
 
-def test_along_chain_correlation_all_zero():
+@pytest.mark.parametrize("shape", SHAPES)
+def test_along_chain_correlation_all_zero(shape):
     """All-O: g(r) = 0 for all r (mean is 0, so no oscillation)."""
-    N = 6
-    arr = np.zeros((N, N, N), dtype=int)
+    Nx, Ny, Nz = shape
+    arr = np.zeros((Nx, Ny, Nz), dtype=int)
     g = order_params.along_chain_correlation(arr)
     np.testing.assert_allclose(g, 0, atol=1e-12)
 
 
-def test_along_chain_correlation_perfect_ofof():
+@pytest.mark.parametrize("shape", SHAPES)
+def test_along_chain_correlation_perfect_ofof(shape):
     """Perfect OFOF (mean 1/2): g(0) = g(2) = 1/4, g(1) = g(3) = -1/4."""
-    N = 6
-    arr = perfect_ofof_chain(N)
+    Nx, Ny, Nz = shape
+    if Nz % 2 != 0:
+        pytest.skip(f"Nz={Nz} not even")
+    arr = perfect_ofof_chain(shape, direction="z")
     g = order_params.along_chain_correlation(arr)
     # <s_i s_{i+0}> = <s^2> = <s> = 1/2 (binary). 1/2 - (1/2)^2 = 1/4.
     np.testing.assert_allclose(g[0], 0.25, atol=1e-12)
     # <s_i s_{i+1}> = 0 (alternating). 0 - 1/4 = -1/4.
     np.testing.assert_allclose(g[1], -0.25, atol=1e-12)
-    # <s_i s_{i+2}> = 1/2 (shift by period). 1/2 - 1/4 = 1/4.
-    np.testing.assert_allclose(g[2], 0.25, atol=1e-12)
-    np.testing.assert_allclose(g[3], -0.25, atol=1e-12)
+    # Period-2 recurrence: g[2] = g[0], g[3] = g[1]. Only defined for Nz >= 4.
+    if Nz >= 4:
+        np.testing.assert_allclose(g[2], 0.25, atol=1e-12)
+        np.testing.assert_allclose(g[3], -0.25, atol=1e-12)
 
 
-def test_along_chain_correlation_all_one():
+@pytest.mark.parametrize("shape", SHAPES)
+def test_along_chain_correlation_all_one(shape):
     """All-F (saturated): g(r) = 0 for all r (<s> = 1, so <s * s> - <s>^2 = 0)."""
-    N = 6
-    arr = np.ones((N, N, N), dtype=int)
+    Nx, Ny, Nz = shape
+    arr = np.ones((Nx, Ny, Nz), dtype=int)
     g = order_params.along_chain_correlation(arr)
     np.testing.assert_allclose(g, 0, atol=1e-12)
 
