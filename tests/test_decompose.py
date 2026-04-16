@@ -58,10 +58,12 @@ def test_decompose_raises_on_off_lattice_atom():
     ay_in = perfect_oof_chain(N, phase=2)
     az_in = perfect_oof_chain(N, phase=2)
     atoms = build_nbo2f(N, ax_in, ay_in, az_in)
-    # Perturb one atom by 0.2 A - well off-lattice
+    # Perturb one atom by 0.2 A along x; deviation is on the x axis.
     atoms.positions[10] += np.array([0.2, 0.0, 0.0])
 
-    with pytest.raises(ValueError, match="not on-lattice"):
+    # Match on the upgraded diagnostic content (atom index + axis letter)
+    # so a future refactor can't silently strip the detail.
+    with pytest.raises(ValueError, match=r"Atom 10 is not on-lattice.*axis x"):
         decompose(atoms, N=N)
 
 
