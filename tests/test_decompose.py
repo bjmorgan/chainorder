@@ -96,6 +96,78 @@ def test_decompose_raises_on_wrong_anion_count():
         decompose(atoms, N=N)
 
 
+def test_decompose_rejects_invalid_N():
+    """Non-integer or non-positive N raises before any structure checks."""
+    N = 3
+    ax = perfect_oof_chain(N, phase=2)
+    ay = perfect_oof_chain(N, phase=2)
+    az = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax, ay, az)
+    for bad_N in (0, -1, 2.5):
+        with pytest.raises(ValueError, match="N must be a positive integer"):
+            decompose(atoms, N=bad_N)     # type: ignore[arg-type]
+
+
+def test_decompose_rejects_origin_out_of_range():
+    """origin components outside [0, 1) raise rather than wrapping silently."""
+    N = 3
+    ax = perfect_oof_chain(N, phase=2)
+    ay = perfect_oof_chain(N, phase=2)
+    az = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax, ay, az)
+    for bad_origin in ((1.5, 0.0, 0.0), (-0.1, 0.0, 0.0), (0.0, 1.0, 0.0)):
+        with pytest.raises(ValueError, match=r"origin\[\d\] must lie in"):
+            decompose(atoms, N=N, origin=bad_origin)
+
+
+def test_decompose_rejects_origin_wrong_length():
+    """origin with not exactly three components raises."""
+    N = 3
+    ax = perfect_oof_chain(N, phase=2)
+    ay = perfect_oof_chain(N, phase=2)
+    az = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax, ay, az)
+    with pytest.raises(ValueError, match="exactly 3 components"):
+        decompose(atoms, N=N, origin=(0.0, 0.0))    # type: ignore[arg-type]
+
+
+def test_decompose_raises_when_species_absent():
+    """A species symbol absent from all anion sites raises with a list of present species."""
+    N = 3
+    ax = perfect_oof_chain(N, phase=2)
+    ay = perfect_oof_chain(N, phase=2)
+    az = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax, ay, az)
+    with pytest.raises(ValueError, match="species='Xe' not found"):
+        decompose(atoms, N=N, species="Xe")
+
+
+def test_decompose_raises_on_degenerate_cell():
+    """Zero-diagonal cell raises on the finite/positive check."""
+    N = 3
+    ax = perfect_oof_chain(N, phase=2)
+    ay = perfect_oof_chain(N, phase=2)
+    az = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax, ay, az)
+    atoms.set_cell(np.diag([0.0, 0.0, 0.0]))
+    with pytest.raises(ValueError, match="positive and finite"):
+        decompose(atoms, N=N)
+
+
+def test_decompose_raises_on_non_cubic_cell():
+    """Orthorhombic but non-cubic cell raises (v1 scope)."""
+    N = 3
+    ax = perfect_oof_chain(N, phase=2)
+    ay = perfect_oof_chain(N, phase=2)
+    az = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax, ay, az)
+    new_cell = atoms.cell.array.copy()
+    new_cell[0, 0] *= 1.1        # stretch x axis only
+    atoms.set_cell(new_cell)
+    with pytest.raises(ValueError, match="cubic"):
+        decompose(atoms, N=N)
+
+
 def test_decompose_raises_on_non_orthorhombic_cell():
     """Triclinic cell should raise ValueError (out of scope for v1)."""
     N = 3
