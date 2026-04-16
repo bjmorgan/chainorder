@@ -62,19 +62,22 @@ def decompose(
 
     Identifies each anion from its fractional coordinates (half-integer in
     exactly one axis, integer in the other two) and assigns it to a slot in
-    one of three (N, N, N) arrays -- one per chain direction. The assignment
-    is cached across calls with identical `(positions, cell, N, origin)`,
-    so re-analysing the same frame (e.g. with a different `species`) is
-    free after the first call, and analysing an MC trajectory of occupation
-    swaps -- where atom positions are identical frame-to-frame -- pays the
-    decomposition cost only once. Off-lattice MD trajectories (positions
-    perturbed thermally) are out of scope; they would not pass the
-    on-lattice check anyway.
+    one of three per-direction arrays -- shape `(Ny, Nz, Nx)` for x, `(Nx,
+    Nz, Ny)` for y, `(Nx, Ny, Nz)` for z. The assignment is cached across
+    calls with identical `(positions, cell, shape, origin)`, so re-analysing
+    the same frame (e.g. with a different `species`) is free after the
+    first call, and analysing an MC trajectory of occupation swaps -- where
+    atom positions are identical frame-to-frame -- pays the decomposition
+    cost only once. Off-lattice MD trajectories (positions perturbed
+    thermally) are out of scope; they would not pass the on-lattice check
+    anyway.
 
     Args:
         atoms: On-lattice ASE `Atoms` supercell with anions at ideal edge
             midpoints of a simple-cubic cation sublattice.
-        N: Supercell size along each axis (cubic N*N*N).
+        N: Supercell size. Scalar (cubic shorthand for `(N, N, N)`) or a
+            3-tuple `(Nx, Ny, Nz)` of positive integers. The cell diagonal
+            must match along each axis.
         origin: Fractional offset of the cation sub-lattice within each
             unit cell. Anions are assumed to sit at (cation position + 1/2)
             along one axis. Default `(0.0, 0.0, 0.0)` places cations at
@@ -93,14 +96,16 @@ def decompose(
 
     Raises:
         ValueError: On any of the validation failures below -- invalid `N`
-            (non-integer or non-positive); `origin` component outside
-            `[0.0, 1.0)`; cell containing non-finite values, not
-            orthorhombic, non-positive on the diagonal, or not cubic;
-            wrong cation or anion count for the given `N`; any atom off-
-            lattice (including the common case of passing the wrong
-            `origin` -- e.g. `(0.0, 0.0, 0.0)` on a body-centred
-            structure); `species` absent from all anion sites; or a slot
-            collision during assignment.
+            (non-integer scalar, non-positive scalar, tuple of wrong
+            length, non-integer tuple element, or non-positive tuple
+            element); `origin` component outside `[0.0, 1.0)`; cell
+            containing non-finite values, not orthorhombic, or
+            non-positive on the diagonal; wrong cation or anion count
+            for the given shape; any atom off-lattice (including the
+            common case of passing the wrong `origin` -- e.g.
+            `(0.0, 0.0, 0.0)` on a body-centred structure); `species`
+            absent from all anion sites; or a slot collision during
+            assignment.
     """
     shape = _validate_shape(N)
     origin = _validate_origin(origin)
@@ -213,14 +218,8 @@ def _build_indices(
             counts, or slot collisions.
     """
     Nx, Ny, Nz = shape
-    # Temporary: existing code below uses a single `N` scalar and the
-    # cubic check. Task 4 replaces this with per-axis broadcasting.
-    if not (Nx == Ny == Nz):
-        raise ValueError(
-            f"Non-cubic shape {shape} is not yet supported. "
-            f"This restriction is lifted in a later commit."
-        )
-    N = Nx
+    N_per_axis = np.asarray(shape, dtype=np.float64)        # (3,)
+    N_max = int(max(shape))
     # Finite check on the whole matrix: NaN anywhere in `cell` would propagate
     # silently through the orthorhombic threshold (`NaN > x` is False) and
     # the on-lattice check, giving platform-dependent int garbage downstream.
@@ -246,49 +245,42 @@ def _build_indices(
             f"Cell diagonal must be positive, got {diag}."
         )
 
-    # Cubic requirement: N is a single scalar, so the three axes must be
-    # equal. Non-cubic orthorhombic cells are out of scope for v1.
-    if not np.allclose(diag, diag[0], rtol=_TOL):
-        raise ValueError(
-            f"Cell must be cubic (equal diagonal components), got diagonal "
-            f"{diag}. Non-cubic orthorhombic cells are out of scope for this "
-            f"version."
-        )
-
-    # Origin is a unit-cell-fractional offset (how the cation sits within
-    # each unit cell); convert to supercell-fractional before subtracting.
     inv_cell = np.linalg.inv(cell)
-    frac = positions @ inv_cell - np.asarray(origin, dtype=np.float64) / N
+    # The origin offset is a unit-cell-fractional shift (how the cation
+    # sits within each unit cell). Convert to supercell-fractional per
+    # axis before subtracting.
+    frac = positions @ inv_cell - np.asarray(origin, dtype=np.float64) / N_per_axis
     frac = frac % 1.0
 
-    # Scale so integer grid is [0, N) and half-integer grid is [0.5, N)
-    scaled = frac * N
+    # Scale so integer grid is [0, N_axis) and half-integer grid is
+    # [0.5, N_axis) along each axis.
+    scaled = frac * N_per_axis                              # shape (n_atoms, 3)
 
     # Round to nearest half-integer: 2*scaled should be an integer.
-    half_rounded = np.round(2 * scaled).astype(int)   # shape (n_atoms, 3)
+    half_rounded = np.round(2 * scaled).astype(int)         # shape (n_atoms, 3)
 
-    # Check atoms are on-lattice (tolerance scaled by N)
-    deviation = np.abs(scaled - half_rounded / 2)
-    # Note: deviation can be ~N near the wrap boundary (scaled ~= N maps to 0).
-    # After %1.0 and *N, scaled is in [0, N); half_rounded can be 0 or 2*N. We
-    # canonicalise half_rounded by taking mod 2*N.
-    half_rounded = half_rounded % (2 * N)
-    # Recompute deviation after canonicalisation
+    # Canonicalise half_rounded to [0, 2*N_axis) per axis. After %1.0 and
+    # per-axis scaling, scaled is in [0, N_axis); half_rounded can be 0
+    # or 2*N_axis at the wrap boundary.
+    half_rounded = half_rounded % (2 * np.asarray(shape, dtype=np.int64))
+
+    # Minimum image distance on the [0, N_axis) circle per axis (width
+    # 2*N_axis for the half-integer grid).
     expected = half_rounded / 2
-    # Use minimum image distance on the [0, N) circle (width 2N for half-grid)
     deviation = np.minimum(
         np.abs(scaled - expected),
-        np.abs(scaled - expected - N),
+        np.abs(scaled - expected - N_per_axis),
     )
-    deviation = np.minimum(deviation, np.abs(scaled - expected + N))
-    if np.any(deviation > _TOL * max(1.0, N)):
+    deviation = np.minimum(deviation, np.abs(scaled - expected + N_per_axis))
+    tol = _TOL * max(1.0, N_max)
+    if np.any(deviation > tol):
         worst_per_atom = deviation.max(axis=1)
         bad = int(np.argmax(worst_per_atom))
         bad_axis = int(np.argmax(deviation[bad]))
         axis_label = "xyz"[bad_axis]
         raise ValueError(
             f"Atom {bad} is not on-lattice: axis {axis_label} deviation "
-            f"{deviation[bad, bad_axis]:.3g} (tolerance {_TOL * N:.3g}). "
+            f"{deviation[bad, bad_axis]:.3g} (tolerance {tol:.3g}). "
             f"Scaled fractional coords: {scaled[bad]}. Expected integer or "
             f"half-integer coordinates."
         )
@@ -307,22 +299,25 @@ def _build_indices(
     # Count checks
     n_cation = int((n_half == 0).sum())
     n_anion = int((n_half == 1).sum())
-    expected_cation = N ** 3
-    expected_anion = 3 * N ** 3
+    n_cells = Nx * Ny * Nz
+    expected_cation = n_cells
+    expected_anion = 3 * n_cells
     if n_cation != expected_cation:
         raise ValueError(
             f"Wrong cation count: found {n_cation}, "
-            f"expected {expected_cation} for N={N}."
+            f"expected {expected_cation} for shape={shape}."
         )
     if n_anion != expected_anion:
         raise ValueError(
-            f"Wrong anion count: found {n_anion}, expected {expected_anion} for N={N}."
+            f"Wrong anion count: found {n_anion}, "
+            f"expected {expected_anion} for shape={shape}."
         )
 
     # Build indices
-    indices = np.full((3, N, N, N), -1, dtype=np.int64)
+    indices = np.full((3, Nx, Ny, Nz), -1, dtype=np.int64)
     anion_atoms = np.where(n_half == 1)[0]
-    coord = (half_rounded // 2) % N   # integer part of scaled coords, wrapped
+    # Per-axis wrap of the integer part of scaled coords.
+    coord = (half_rounded // 2) % np.asarray(shape, dtype=np.int64)
 
     for atom_idx in anion_atoms:
         direction = Direction(int(np.argmax(is_half[atom_idx])))
