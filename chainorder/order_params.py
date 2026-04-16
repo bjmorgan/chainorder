@@ -245,8 +245,8 @@ def structure_factor(
     Returns:
         Complex array of shape `(Nx, Ny, Nz)` with axes `(kx, ky, kz)`.
         `|F|**2` is proportional to the kinematic diffuse scattering
-        intensity at wavevector `(kx, ky, kz) / N` reciprocal lattice
-        units. Normalised so that a fully F-occupied anion sublattice
+        intensity at wavevector `(kx / Nx, ky / Ny, kz / Nz)` in
+        reciprocal lattice units. Normalised so that a fully F-occupied anion sublattice
         gives `F[0, 0, 0] = 3` (three F per unit cell) and a single-
         sublattice period-3 ordering gives `|F| = 1/3` at its peak.
 
