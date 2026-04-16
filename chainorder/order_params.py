@@ -51,6 +51,12 @@ def motif_counts(
             f"window_length must be an integer, got "
             f"{type(window_length).__name__}."
         )
+    if not np.issubdtype(anion_direction.dtype, np.integer):
+        raise TypeError(
+            f"anion_direction must have integer dtype for motif counting; "
+            f"got {anion_direction.dtype}. The bit-packed canonicalisation "
+            f"truncates floats silently and would give wrong answers."
+        )
     N = anion_direction.shape[-1]
     w = int(window_length)
     if w < 1:

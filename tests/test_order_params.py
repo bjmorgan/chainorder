@@ -156,6 +156,14 @@ def test_motif_counts_rejects_invalid_window_lengths():
         order_params.motif_counts(arr, window_length=2.5)     # type: ignore[arg-type]
 
 
+def test_motif_counts_rejects_non_integer_dtype():
+    """Float occupation array: reject rather than silently truncate to 0/1."""
+    N = 6
+    arr = np.full((N, N, N), 0.7, dtype=np.float64)
+    with pytest.raises(TypeError, match="integer dtype"):
+        order_params.motif_counts(arr, window_length=3)
+
+
 def test_motif_counts_per_chain_distinct_for_mixed_patterns():
     """Mixed OOF/OFOF chains: counts per (j, k) reflect each chain's pattern."""
     N = 6
