@@ -37,8 +37,14 @@ class ChainArrays(NamedTuple):
     - ``z[i, j, k]``: z-chain at lateral position ``(i, j)``, site ``k`` along z.
 
     Supports positional unpacking (``ax, ay, az = decompose(...)``) as well
-    as attribute access (``result.x``). The latter is safer for downstream
-    use since it removes the risk of silently transposing the tuple.
+    as attribute access (``result.x``). Prefer attribute access when the
+    direction matters to downstream logic: a transposed *unpacking*
+    (``az, ay, ax = decompose(...)``) would silently swap the x and z
+    chains and produce a mathematically-consistent but physically wrong
+    answer. Attribute access is not a runtime guarantee against passing
+    the wrong field to a downstream function -- that is still the
+    caller's responsibility -- but it makes the name a checkable at the
+    call site.
     """
 
     x: np.ndarray

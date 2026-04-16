@@ -76,12 +76,15 @@ def motif_counts(
             (larger windows would wrap around the chain and alias).
 
     Notes:
-        The canonicalisation table is materialised as an array of size
-        `2 ** window_length` (one entry per possible window value). This
-        is negligible for typical `window_length <= 8` but grows
-        exponentially -- `window_length = 30` already occupies 8 GB. The
-        int64 limit of 62 is the theoretical ceiling; practical use
-        should keep `window_length` small.
+        The canonicalisation table is materialised as an int64 array of
+        size `2 ** window_length` plus a Python dict of the same number
+        of tuple entries. This grows exponentially: `window_length = 20`
+        costs ~8 MB for the array alone plus tens of megabytes for the
+        dict; `window_length = 25` already pushes a gigabyte;
+        `window_length = 30` is far beyond a laptop's RAM in practice,
+        even though the int64 algorithmic ceiling is 62. Keep
+        `window_length` small (typical <= 8) and treat anything past
+        ~15 as requiring deliberate consideration.
     """
     if not isinstance(window_length, (int, np.integer)):
         raise TypeError(
