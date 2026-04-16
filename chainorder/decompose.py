@@ -107,17 +107,39 @@ def _validate_origin(
     produce the same hashable cache key) and enforces that each component
     lies in `[0.0, 1.0)` -- values outside this range would wrap silently
     through the `frac % 1.0` operation in `_build_indices`.
+
+    Raises:
+        TypeError: If `origin` is not a sequence (e.g. `None`, `int`), or
+            contains a non-numeric component. Strings and bytes are
+            explicitly rejected even though they satisfy `len() == 3`,
+            because per-character `float()` would accept e.g. `"012"`.
+        ValueError: If `origin` has the wrong number of components, or if
+            any component lies outside `[0.0, 1.0)`.
     """
-    if len(origin) != 3:
-        raise ValueError(
-            f"origin must have exactly 3 components, got {len(origin)}."
+    if isinstance(origin, (str, bytes)):
+        raise TypeError(
+            f"origin must be a sequence of three numbers, got {type(origin).__name__}."
         )
     try:
-        a, b, c = (float(origin[0]), float(origin[1]), float(origin[2]))
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"origin components must be numeric, got {origin!r}."
+        length = len(origin)
+    except TypeError as exc:
+        raise TypeError(
+            f"origin must be a sequence of three numbers, got "
+            f"{type(origin).__name__}."
         ) from exc
+    if length != 3:
+        raise ValueError(
+            f"origin must have exactly 3 components, got {length}."
+        )
+    components: list[float] = []
+    for i, v in enumerate(origin):
+        if not isinstance(v, (int, float, np.integer, np.floating)):
+            raise TypeError(
+                f"origin[{i}] must be numeric (int or float), got "
+                f"{type(v).__name__}."
+            )
+        components.append(float(v))
+    a, b, c = components
     for name, v in (("origin[0]", a), ("origin[1]", b), ("origin[2]", c)):
         if not 0.0 <= v < 1.0:
             raise ValueError(
