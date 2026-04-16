@@ -232,18 +232,18 @@ def structure_factor(
     matching reciprocal axis.
 
     Args:
-        anion_x: x-chain occupation, shape `(N, N, N)`. Axes are
+        anion_x: x-chain occupation, shape `(Ny, Nz, Nx)`. Axes are
             `(j, k, i)`: real-space lateral positions `(j, k)` in the
             `(y, z)` plane, position `i` along the x chain.
-        anion_y: y-chain occupation, shape `(N, N, N)`. Axes are
+        anion_y: y-chain occupation, shape `(Nx, Nz, Ny)`. Axes are
             `(i, k, j)`: lateral positions `(i, k)` in the `(x, z)` plane,
             position `j` along the y chain.
-        anion_z: z-chain occupation, shape `(N, N, N)`. Axes are
+        anion_z: z-chain occupation, shape `(Nx, Ny, Nz)`. Axes are
             `(i, j, k)`: lateral positions `(i, j)` in the `(x, y)` plane,
             position `k` along the z chain.
 
     Returns:
-        Complex array of shape `(N, N, N)` with axes `(kx, ky, kz)`.
+        Complex array of shape `(Nx, Ny, Nz)` with axes `(kx, ky, kz)`.
         `|F|**2` is proportional to the kinematic diffuse scattering
         intensity at wavevector `(kx, ky, kz) / N` reciprocal lattice
         units. Normalised so that a fully F-occupied anion sublattice
@@ -256,25 +256,45 @@ def structure_factor(
         np.zeros_like(ax))` returns the x-sublattice contribution alone.
         For per-chain (not cross-chain) analysis use `chain_fft` instead.
     """
-    if anion_x.shape != anion_y.shape or anion_x.shape != anion_z.shape:
+    # Derive (Nx, Ny, Nz) from the three per-direction input shapes.
+    # anion_x axes (j, k, i) -> (Ny, Nz, Nx)
+    # anion_y axes (i, k, j) -> (Nx, Nz, Ny)
+    # anion_z axes (i, j, k) -> (Nx, Ny, Nz)
+    if anion_x.ndim != 3 or anion_y.ndim != 3 or anion_z.ndim != 3:
         raise ValueError(
-            f"All three sublattice arrays must have the same shape; got "
+            f"All three sublattice arrays must be 3-D; got shapes "
             f"{anion_x.shape}, {anion_y.shape}, {anion_z.shape}."
         )
-    N = anion_x.shape[-1]
-    k = np.arange(N)
+    Ny_x, Nz_x, Nx_x = anion_x.shape
+    Nx_y, Nz_y, Ny_y = anion_y.shape
+    Nx_z, Ny_z, Nz_z = anion_z.shape
+    if (
+        Nx_x != Nx_y or Nx_x != Nx_z
+        or Ny_x != Ny_y or Ny_x != Ny_z
+        or Nz_x != Nz_y or Nz_x != Nz_z
+    ):
+        raise ValueError(
+            f"Sublattice arrays have inconsistent per-direction shapes: "
+            f"x={anion_x.shape} (expects (Ny, Nz, Nx)), "
+            f"y={anion_y.shape} (expects (Nx, Nz, Ny)), "
+            f"z={anion_z.shape} (expects (Nx, Ny, Nz))."
+        )
+    Nx, Ny, Nz = Nx_x, Ny_x, Nz_x
 
     # FFT each sublattice and transpose to canonical (kx, ky, kz).
-    # anion_x axes are (j, k, i) = (y, z, x); FFT output axes (ky, kz, kx).
-    # anion_y axes are (i, k, j) = (x, z, y); FFT output axes (kx, kz, ky).
-    # anion_z axes are (i, j, k) = (x, y, z); already canonical.
+    # anion_x axes (ky, kz, kx) -> (kx, ky, kz)
+    # anion_y axes (kx, kz, ky) -> (kx, ky, kz)
+    # anion_z axes (kx, ky, kz) already canonical
     f_x = np.fft.fftn(anion_x).transpose(2, 0, 1)
     f_y = np.fft.fftn(anion_y).transpose(0, 2, 1)
     f_z = np.fft.fftn(anion_z)
 
     # Half-unit-cell spatial offset of each sublattice along its own axis.
-    phase_x = np.exp(-1j * np.pi * k[:, None, None] / N)
-    phase_y = np.exp(-1j * np.pi * k[None, :, None] / N)
-    phase_z = np.exp(-1j * np.pi * k[None, None, :] / N)
+    kx = np.arange(Nx)
+    ky = np.arange(Ny)
+    kz = np.arange(Nz)
+    phase_x = np.exp(-1j * np.pi * kx[:, None, None] / Nx)
+    phase_y = np.exp(-1j * np.pi * ky[None, :, None] / Ny)
+    phase_z = np.exp(-1j * np.pi * kz[None, None, :] / Nz)
 
-    return (f_x * phase_x + f_y * phase_y + f_z * phase_z) / N ** 3
+    return (f_x * phase_x + f_y * phase_y + f_z * phase_z) / (Nx * Ny * Nz)
