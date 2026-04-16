@@ -175,14 +175,14 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
             "undefined. Inspect chain_fft(arr)[..., N // 3] to confirm."
         )
 
-    # shifted[da, db, a, b] = phi[(a + da) % N, (b + db) % N] via
-    # broadcast-aware advanced indexing; no Python loops.
-    idx = np.arange(N)
-    a_idx = (idx[:, None, None, None] + idx[None, None, :, None]) % N  # (N_da, 1, N_a, 1)
-    b_idx = (idx[None, :, None, None] + idx[None, None, None, :]) % N  # (1, N_db, 1, N_b)
-    shifted = phi[a_idx, b_idx]                                        # (N, N, N, N)
-
-    return np.mean(phi[None, None] * np.conj(shifted), axis=(2, 3)) / power
+    # Wiener-Khinchin: IFFT2(|FFT2(phi)|^2) / N^2 is the spatial
+    # autocorrelation < phi(a, b) * conj(phi(a - da, b - db)) >. The direct
+    # form uses the opposite lag sign, so take the complex conjugate to
+    # match < phi(a, b) * conj(phi(a + da, b + db)) >. O(N^2 log N) instead
+    # of the (N, N, N, N) shifted-index tensor.
+    phi_k = np.fft.fft2(phi)                                           # (N, N)
+    numer = np.conj(np.fft.ifft2(np.abs(phi_k) ** 2)) / N ** 2         # (N, N)
+    return numer / power
 
 
 def structure_factor(
