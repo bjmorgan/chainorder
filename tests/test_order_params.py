@@ -164,28 +164,65 @@ def test_inter_chain_correlation_raises_when_N_not_divisible_by_3():
         order_params.inter_chain_correlation(arr)
 
 
-def test_structure_factor_perfect_oof_on_axis_peaks():
-    """Uniform perfect OOF: non-zero only along (kj=0, kk=0, ki) with |F|=1/3."""
+def test_structure_factor_only_x_chains_ordered_peaks_on_kx_axis():
+    """x-chains OOF, y/z empty: peaks only on the kx reciprocal axis."""
     N = 6
-    arr = perfect_oof_chain(N, phase=2)
-    F = order_params.structure_factor(arr)
+    ax = perfect_oof_chain(N, phase=2)
+    zero = np.zeros((N, N, N), dtype=int)
+    F = order_params.structure_factor(ax, zero, zero)
     assert F.shape == (N, N, N)
-    # On-axis peaks: DC, period-3, period-3 conjugate
+    # DC and period-3 harmonics along kx, all at magnitude 1/3.
     np.testing.assert_allclose(np.abs(F[0, 0, 0]), 1.0 / 3.0, atol=1e-12)
-    np.testing.assert_allclose(np.abs(F[0, 0, N // 3]), 1.0 / 3.0, atol=1e-12)
-    np.testing.assert_allclose(np.abs(F[0, 0, 2 * N // 3]), 1.0 / 3.0, atol=1e-12)
-    # Off-axis (kj or kk != 0): zero (chains are phase-locked)
-    mask = np.ones((N, N, N), dtype=bool)
-    mask[0, 0, :] = False
-    np.testing.assert_allclose(F[mask], 0, atol=1e-12)
+    np.testing.assert_allclose(np.abs(F[N // 3, 0, 0]), 1.0 / 3.0, atol=1e-12)
+    np.testing.assert_allclose(np.abs(F[2 * N // 3, 0, 0]), 1.0 / 3.0, atol=1e-12)
+    # No period-3 peak on the ky or kz axes (anisotropic input; no powder
+    # averaging).
+    np.testing.assert_allclose(F[0, N // 3, 0], 0, atol=1e-12)
+    np.testing.assert_allclose(F[0, 0, N // 3], 0, atol=1e-12)
 
 
-def test_structure_factor_matches_fft2_of_chain_fft():
-    """structure_factor(arr) == fft2(chain_fft(arr), axes=(0, 1)) / N**2."""
+def test_structure_factor_rotation_equivariance_about_z():
+    """Rotating the structure 90° about z moves peaks from the kx to the ky axis."""
     N = 6
-    rng = np.random.default_rng(123)
-    arr = rng.integers(0, 2, size=(N, N, N))
-    F_direct = order_params.structure_factor(arr)
-    phi = order_params.chain_fft(arr)
-    F_via_chain = np.fft.fft2(phi, axes=(0, 1)) / N ** 2
-    np.testing.assert_allclose(F_direct, F_via_chain, atol=1e-12)
+    ordered = perfect_oof_chain(N, phase=2)
+    zero = np.zeros((N, N, N), dtype=int)
+
+    # "Unrotated": the x-chains carry the OOF pattern.
+    F_unrot = order_params.structure_factor(ordered, zero, zero)
+    # "Rotated 90° about z": what were x-chains are now y-chains, so the same
+    # occupation pattern appears in the y-chain slot.
+    F_rot = order_params.structure_factor(zero, ordered, zero)
+
+    # Peaks move from (kx, 0, 0) to (0, ky, 0).
+    for k in (N // 3, 2 * N // 3):
+        np.testing.assert_allclose(np.abs(F_rot[0, k, 0]), 1.0 / 3.0, atol=1e-12)
+        np.testing.assert_allclose(F_rot[k, 0, 0], 0, atol=1e-12)
+    # DC is unaffected by rotation.
+    np.testing.assert_allclose(F_unrot[0, 0, 0], F_rot[0, 0, 0], atol=1e-12)
+
+
+def test_structure_factor_all_directions_ordered_has_cubic_symmetry():
+    """All three sublattices OOF, same phase: peaks on all three Cartesian axes."""
+    N = 6
+    ax = perfect_oof_chain(N, phase=2)
+    ay = perfect_oof_chain(N, phase=2)
+    az = perfect_oof_chain(N, phase=2)
+    F = order_params.structure_factor(ax, ay, az)
+    # Period-3 peaks on each Cartesian axis, equal magnitude.
+    np.testing.assert_allclose(np.abs(F[N // 3, 0, 0]), 1.0 / 3.0, atol=1e-12)
+    np.testing.assert_allclose(np.abs(F[0, N // 3, 0]), 1.0 / 3.0, atol=1e-12)
+    np.testing.assert_allclose(np.abs(F[0, 0, N // 3]), 1.0 / 3.0, atol=1e-12)
+    # No mixed peaks (e.g. off the Cartesian axes).
+    np.testing.assert_allclose(F[N // 3, N // 3, 0], 0, atol=1e-12)
+    np.testing.assert_allclose(F[N // 3, 0, N // 3], 0, atol=1e-12)
+    # DC = 1 (three sublattices each contributing 1/3).
+    np.testing.assert_allclose(np.abs(F[0, 0, 0]), 1.0, atol=1e-12)
+
+
+def test_structure_factor_raises_on_shape_mismatch():
+    """Inputs with inconsistent shapes should raise ValueError."""
+    N = 6
+    arr = np.zeros((N, N, N), dtype=int)
+    bad = np.zeros((N, N, N + 1), dtype=int)
+    with pytest.raises(ValueError, match="same shape"):
+        order_params.structure_factor(arr, arr, bad)

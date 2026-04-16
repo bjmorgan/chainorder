@@ -141,30 +141,63 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     return np.mean(v[None, None] * np.conj(shifted), axis=(2, 3))
 
 
-def structure_factor(anion_direction: np.ndarray) -> np.ndarray:
-    """Full 3D Fourier transform of a chain occupation array.
+def structure_factor(
+    anion_x: np.ndarray,
+    anion_y: np.ndarray,
+    anion_z: np.ndarray,
+) -> np.ndarray:
+    """Anion-sublattice 3D structure factor in a canonical `(kx, ky, kz)` frame.
 
-    Gives the Fourier amplitude of the flagged-species occupation at every
-    wavevector `(kj, kk, ki) in {0, ..., N-1}^3`, normalised so that a
-    perfect period-p ordering gives `|F| = 1/p` at its peak (consistent
-    with `chain_fft`). `|F|^2` is proportional to the kinematic diffuse
-    scattering intensity at wavevector `(kj, kk, ki) / N` reciprocal lattice
-    units, assuming unit form factor on the flagged species.
+    Each of the three edge-midpoint sublattices is Fourier-transformed,
+    transposed into canonical `(kx, ky, kz)` axes, and summed with the
+    half-cell phase offset of its own sublattice relative to the cation
+    corner (x-anions sit at `+a/2` along x, y-anions at `+a/2` along y,
+    z-anions at `+a/2` along z). The result is the full coherent structure
+    factor of the flagged-species occupation, with unit form factor.
+
+    Rotation-equivariant: a lattice-symmetry rotation of the input
+    structure produces the correspondingly rotated output. Anisotropy is
+    preserved — chains ordered along one direction give peaks on the
+    matching reciprocal axis.
 
     Args:
-        anion_direction: Binary species array along one chain direction
-            (output of `decompose`), shape (N, N, N).
+        anion_x: x-chain occupation, shape `(N, N, N)`, axes `(j, k, i)`.
+        anion_y: y-chain occupation, shape `(N, N, N)`, axes `(i, k, j)`.
+        anion_z: z-chain occupation, shape `(N, N, N)`, axes `(i, j, k)`.
 
     Returns:
-        Complex array of shape (N, N, N). All three axes are Fourier
-        frequencies; there is no distinguished "chain" axis.
+        Complex array of shape `(N, N, N)` with axes `(kx, ky, kz)`.
+        `|F|**2` is proportional to the kinematic diffuse scattering
+        intensity at wavevector `(kx, ky, kz) / N` reciprocal lattice
+        units. Normalised so that a fully F-occupied anion sublattice
+        gives `F[0, 0, 0] = 3` (three F per unit cell) and a single-
+        sublattice period-3 ordering gives `|F| = 1/3` at its peak.
 
     Notes:
-        Related to `chain_fft` by a further 2D FFT across the chain-plane
-        axes: ``structure_factor(arr)`` equals
-        ``np.fft.fft2(chain_fft(arr), axes=(0, 1)) / N ** 2``. Use
-        `chain_fft` for per-chain analysis; use `structure_factor` for
-        cross-chain / diffuse-scattering analysis.
+        Per-sublattice contributions can be recovered by zeroing the other
+        two arrays: e.g. `structure_factor(ax, np.zeros_like(ax),
+        np.zeros_like(ax))` returns the x-sublattice contribution alone.
+        For per-chain (not cross-chain) analysis use `chain_fft` instead.
     """
-    N = anion_direction.shape[-1]
-    return np.fft.fftn(anion_direction) / N ** 3
+    if anion_x.shape != anion_y.shape or anion_x.shape != anion_z.shape:
+        raise ValueError(
+            f"All three sublattice arrays must have the same shape; got "
+            f"{anion_x.shape}, {anion_y.shape}, {anion_z.shape}."
+        )
+    N = anion_x.shape[-1]
+    k = np.arange(N)
+
+    # FFT each sublattice and transpose to canonical (kx, ky, kz).
+    # anion_x axes are (j, k, i) = (y, z, x); FFT output axes (ky, kz, kx).
+    # anion_y axes are (i, k, j) = (x, z, y); FFT output axes (kx, kz, ky).
+    # anion_z axes are (i, j, k) = (x, y, z); already canonical.
+    f_x = np.fft.fftn(anion_x).transpose(2, 0, 1)
+    f_y = np.fft.fftn(anion_y).transpose(0, 2, 1)
+    f_z = np.fft.fftn(anion_z)
+
+    # Half-unit-cell spatial offset of each sublattice along its own axis.
+    phase_x = np.exp(-1j * np.pi * k[:, None, None] / N)
+    phase_y = np.exp(-1j * np.pi * k[None, :, None] / N)
+    phase_z = np.exp(-1j * np.pi * k[None, None, :] / N)
+
+    return (f_x * phase_x + f_y * phase_y + f_z * phase_z) / N ** 3
