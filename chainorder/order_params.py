@@ -159,11 +159,15 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
 
     `|G|` ranges from `~0` (uncorrelated) to `1` (fully phase-locked);
     `arg(G)` encodes the phase pattern (`0` for uniform alignment, a
-    linear gradient for a striped arrangement, etc.). A phase-only
-    correlator (each chain's phase weighted equally, regardless of
-    amplitude) is trivially recoverable from the result here by
-    dividing by the per-entry magnitude: `G_phase_only = G / |G|`,
-    defined only where `|G|` is non-zero.
+    linear gradient for a striped arrangement, etc.).
+
+    A phase-only inter-chain correlator (in which every chain is treated
+    as equally ordered regardless of its Fourier amplitude) is a *different*
+    quantity from the amplitude-weighted form returned here and cannot be
+    recovered from `G` alone -- it requires per-chain phases from
+    `chain_fft(arr)[..., N // 3]`. If you need that variant, compute
+    `v = np.exp(1j * np.angle(phi))` yourself and take the spatial
+    autocorrelation of `v`.
 
     Args:
         anion_direction: Binary species array along one chain direction,
