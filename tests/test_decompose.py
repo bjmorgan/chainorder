@@ -165,3 +165,48 @@ def test_decompose_rebuilds_when_n_changes(monkeypatch):
         decompose(atoms, N=N)
 
     assert call_count["n"] == 2
+
+
+def test_decompose_cache_hit_with_new_symbols_same_positions(monkeypatch):
+    """Two Atoms with identical positions/cell but different F/O patterns:
+    second call is a cache hit AND produces the correct per-symbols output."""
+    import importlib
+    dm = importlib.import_module("chainorder.decompose")
+
+    call_count = {"n": 0}
+    original_build = dm._build_indices
+
+    def counting_build(*args, **kwargs):
+        call_count["n"] += 1
+        return original_build(*args, **kwargs)
+
+    monkeypatch.setattr(dm, "_build_indices", counting_build)
+    dm._indices_cached.cache_clear()
+
+    N = 3
+    ax_first = perfect_oof_chain(N, phase=2)
+    ay_first = perfect_oof_chain(N, phase=0)
+    az_first = perfect_oof_chain(N, phase=1)
+    atoms_first = build_nbo2f(N, ax_first, ay_first, az_first)
+
+    ax_second = perfect_oof_chain(N, phase=0)      # different F/O pattern
+    ay_second = perfect_oof_chain(N, phase=1)
+    az_second = perfect_oof_chain(N, phase=2)
+    atoms_second = build_nbo2f(N, ax_second, ay_second, az_second)
+    # Positions and cell are identical (build_nbo2f uses the same lattice
+    # geometry regardless of the chain arrays, only the species symbols
+    # differ), so the index map should be reusable.
+
+    out_first = decompose(atoms_first, N=N)
+    out_second = decompose(atoms_second, N=N)
+
+    # Index map built exactly once.
+    assert call_count["n"] == 1, f"Expected 1 build, got {call_count['n']}"
+
+    # Each output reflects its own atoms' species.
+    np.testing.assert_array_equal(out_first.x, ax_first)
+    np.testing.assert_array_equal(out_first.y, ay_first)
+    np.testing.assert_array_equal(out_first.z, az_first)
+    np.testing.assert_array_equal(out_second.x, ax_second)
+    np.testing.assert_array_equal(out_second.y, ay_second)
+    np.testing.assert_array_equal(out_second.z, az_second)
