@@ -125,3 +125,43 @@ def perfect_ofof_chain(
         if i % 2 == 1:
             arr[:, :, i] = 1
     return arr
+
+
+def oof_or_zero(
+    shape: tuple[int, int, int],
+    phase: int,
+    direction: str,
+) -> np.ndarray:
+    """Return a chain-layout OOF array if chain length is divisible by 3, else zeros.
+
+    Convenience for parametrised tests: constructs an array of the correct
+    shape for `direction` regardless of whether the per-axis length supports
+    OOF ordering.
+    """
+    Nx, Ny, Nz = _normalise_shape(shape)
+    shape_by_direction = {
+        "x": (Ny, Nz, Nx),
+        "y": (Nx, Nz, Ny),
+        "z": (Nx, Ny, Nz),
+    }
+    out_shape = shape_by_direction[direction]
+    chain_length = out_shape[-1]
+    if chain_length % 3 == 0:
+        return perfect_oof_chain(shape, phase=phase, direction=direction)
+    return np.zeros(out_shape, dtype=int)
+
+
+def dummy_chain_arrays(
+    shape: tuple[int, int, int],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Three all-zero chain arrays of the correct per-direction shape.
+
+    For tests that construct a valid Atoms object but don't care about the
+    F/O pattern -- e.g. tests of structural validation paths.
+    """
+    Nx, Ny, Nz = _normalise_shape(shape)
+    return (
+        np.zeros((Ny, Nz, Nx), dtype=int),
+        np.zeros((Nx, Nz, Ny), dtype=int),
+        np.zeros((Nx, Ny, Nz), dtype=int),
+    )
