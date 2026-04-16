@@ -220,10 +220,15 @@ def _build_indices(
     )
     deviation = np.minimum(deviation, np.abs(scaled - expected + N))
     if np.any(deviation > _TOL * max(1.0, N)):
-        bad = int(np.argmax(deviation.max(axis=1)))
+        worst_per_atom = deviation.max(axis=1)
+        bad = int(np.argmax(worst_per_atom))
+        bad_axis = int(np.argmax(deviation[bad]))
+        axis_label = "xyz"[bad_axis]
         raise ValueError(
-            f"Atom {bad} at scaled fractional coords {scaled[bad]} is not on-lattice. "
-            f"Expected integer or half-integer coordinates (tolerance {_TOL * N})."
+            f"Atom {bad} is not on-lattice: axis {axis_label} deviation "
+            f"{deviation[bad, bad_axis]:.3g} (tolerance {_TOL * N:.3g}). "
+            f"Scaled fractional coords: {scaled[bad]}. Expected integer or "
+            f"half-integer coordinates."
         )
 
     # Classify: coord is integer iff half_rounded is even; half-integer iff odd.
@@ -268,10 +273,15 @@ def _build_indices(
             indices[Direction.Z, i, j, k] = atom_idx
 
     if np.any(indices == -1):
+        missing = np.argwhere(indices == -1)
+        d, a, b, c = (int(x) for x in missing[0])
+        axis_label = "xyz"[d]
         raise ValueError(
-            "Decomposition incomplete: some chain slots unfilled. This usually "
-            "means multiple anions mapped to the same slot (rounding collision) "
-            "or the supercell dimensions don't match N."
+            f"Decomposition incomplete: slot (direction={axis_label}, "
+            f"lateral=({a}, {b}), along-chain={c}) is unfilled. "
+            f"{len(missing)} slot(s) unfilled in total. This usually means "
+            f"two anions mapped to the same slot (rounding collision) or the "
+            f"supercell dimensions do not match N."
         )
 
     return indices
