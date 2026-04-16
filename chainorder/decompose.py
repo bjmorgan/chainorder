@@ -202,8 +202,11 @@ def _build_indices(
         origin: Cation position in unit-cell fractional coordinates.
 
     Returns:
-        Integer array of shape (3, N, N, N) mapping (direction, j, k, i) to
-        the index of the corresponding atom in `positions`.
+        Integer array of shape (3, Nx, Ny, Nz) mapping (direction, i, j, k)
+        to the index of the corresponding atom in `positions`. Each layer is
+        indexed by the xyz-grid coordinate of the anion (not by chain-layout
+        order); `_apply_indices` transposes each layer into chain-layout
+        order when constructing the public `ChainArrays`.
 
     Raises:
         ValueError: On non-orthorhombic cells, off-lattice atoms, wrong atom
@@ -324,23 +327,18 @@ def _build_indices(
     for atom_idx in anion_atoms:
         direction = Direction(int(np.argmax(is_half[atom_idx])))
         i, j, k = int(coord[atom_idx, 0]), int(coord[atom_idx, 1]), int(coord[atom_idx, 2])
-        if direction is Direction.X:    # x-anion: chain (j, k), position i
-            indices[Direction.X, j, k, i] = atom_idx
-        elif direction is Direction.Y:  # y-anion: chain (i, k), position j
-            indices[Direction.Y, i, k, j] = atom_idx
-        else:                           # z-anion: chain (i, j), position k
-            indices[Direction.Z, i, j, k] = atom_idx
+        indices[direction, i, j, k] = atom_idx
 
     if np.any(indices == -1):
         missing = np.argwhere(indices == -1)
-        d, a, b, c = (int(x) for x in missing[0])
+        d, i, j, k = (int(x) for x in missing[0])
         axis_label = "xyz"[d]
         raise ValueError(
             f"Decomposition incomplete: slot (direction={axis_label}, "
-            f"lateral=({a}, {b}), along-chain={c}) is unfilled. "
+            f"grid=({i}, {j}, {k})) is unfilled. "
             f"{len(missing)} slot(s) unfilled in total. This usually means "
             f"two anions mapped to the same slot (rounding collision) or the "
-            f"supercell dimensions do not match N."
+            f"supercell dimensions do not match the shape argument."
         )
 
     return indices
@@ -371,8 +369,10 @@ def _apply_indices(
             f"species={species!r} not found on any anion site. "
             f"Anion species present: {present}."
         )
+    # `is_species` is xyz-coord: axes (direction, i, j, k). Transpose each
+    # layer into public chain-layout order (last axis = along-chain).
     return ChainArrays(
-        x=is_species[Direction.X],
-        y=is_species[Direction.Y],
-        z=is_species[Direction.Z],
+        x=is_species[Direction.X].transpose(1, 2, 0),  # (i,j,k) -> (j,k,i)
+        y=is_species[Direction.Y].transpose(0, 2, 1),  # (i,j,k) -> (i,k,j)
+        z=is_species[Direction.Z],                     # (i,j,k) unchanged
     )
