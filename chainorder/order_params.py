@@ -40,11 +40,21 @@ def motif_counts(
         shape (N, N) giving per-chain counts.
 
     Raises:
-        TypeError: If `window_length` is not an integer.
+        TypeError: If `window_length` is not an integer, or if
+            `anion_direction` has a non-integer dtype (floats silently
+            truncate through the bit-packing cast).
         ValueError: If `window_length` is outside the valid range. The upper
             bound of 62 is a hard limit of the int64 bit-packing used for
             the canonicalisation table; the upper bound of N is geometric
             (larger windows would wrap around the chain and alias).
+
+    Notes:
+        The canonicalisation table is materialised as an array of size
+        `2 ** window_length` (one entry per possible window value). This
+        is negligible for typical `window_length <= 8` but grows
+        exponentially -- `window_length = 30` already occupies 8 GB. The
+        int64 limit of 62 is the theoretical ceiling; practical use
+        should keep `window_length` small.
     """
     if not isinstance(window_length, (int, np.integer)):
         raise TypeError(
@@ -149,9 +159,11 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
 
     `|G|` ranges from `~0` (uncorrelated) to `1` (fully phase-locked);
     `arg(G)` encodes the phase pattern (`0` for uniform alignment, a
-    linear gradient for a striped arrangement, etc.). Phase-only
-    correlation is trivially recoverable as `G / |G|` where `|G|` is
-    non-zero.
+    linear gradient for a striped arrangement, etc.). A phase-only
+    correlator (each chain's phase weighted equally, regardless of
+    amplitude) is trivially recoverable from the result here by
+    dividing by the per-entry magnitude: `G_phase_only = G / |G|`,
+    defined only where `|G|` is non-zero.
 
     Args:
         anion_direction: Binary species array along one chain direction,
@@ -164,8 +176,16 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
         ValueError: If N is not divisible by 3 (no well-defined period-3
             phase). To generalise to other wavevectors, compute
             `chain_fft` and extract the component manually.
-        ValueError: If every chain has `|phi| = 0` (e.g. all-O or all-F
-            input); the correlation is undefined.
+        ValueError: If every chain has `|phi| = 0` identically (e.g.
+            all-O or all-F input); the correlation is undefined.
+
+    Notes:
+        The zero-power guard checks `|phi|^2` exactly against zero. Inputs
+        with very small but non-zero power (a few flagged sites in an
+        otherwise uniform structure) pass the guard but return a `G`
+        dominated by shot noise; magnitudes in that regime are not
+        meaningful. Inspect `np.abs(chain_fft(arr)[..., N // 3]).mean()`
+        before interpreting `|G|` for such inputs.
     """
     N = anion_direction.shape[-1]
     if N % 3 != 0:

@@ -11,10 +11,11 @@ _TOL = 1e-6
 
 
 class Direction(IntEnum):
-    """Chain-direction indices into the first axis of the `_build_indices` map.
+    """Named indices for the three Cartesian chain directions.
 
     Values are integers (`IntEnum`) so the members can be used directly as
-    numpy indices (`indices[Direction.X, ...]`).
+    numpy indices (e.g. into the internal per-direction index map) or as
+    the 0/1/2 axis labels used throughout this module.
     """
 
     X = 0
@@ -25,8 +26,10 @@ class Direction(IntEnum):
 class ChainArrays(NamedTuple):
     """Three per-direction anion occupation arrays from a ReO3-type supercell.
 
-    Each field is a shape-``(N, N, N)`` integer array. The last axis is
-    always along-chain; the first two indices identify the chain's lateral
+    Each field is a shape-``(N, N, N)`` ``int64`` array with values in
+    ``{0, 1}``: ``1`` at sites whose species matches the `species` argument
+    passed to `decompose`, ``0`` elsewhere. The last axis is always
+    along-chain; the first two indices identify the chain's lateral
     position in the sublattice:
 
     - ``x[j, k, i]``: x-chain at lateral position ``(j, k)``, site ``i`` along x.
@@ -83,9 +86,16 @@ def decompose(
         Supports positional unpacking.
 
     Raises:
-        ValueError: If the cell is not orthorhombic, the atom count is wrong
-            for the given N, or any atom is off the expected on-lattice
-            positions (within tolerance).
+        TypeError: If `origin` is not a sequence of three numbers (e.g.
+            `None`, an int, a string, or bytes).
+        ValueError: On any of the validation failures below -- invalid `N`
+            (non-integer or non-positive); `origin` of wrong length, or
+            with a component outside `[0.0, 1.0)`; cell containing non-
+            finite values, not orthorhombic, non-positive on the diagonal,
+            or not cubic; wrong cation or anion count for the given `N`;
+            any atom off-lattice (integer or half-integer) beyond
+            tolerance; `species` absent from all anion sites; or a slot
+            collision during assignment.
     """
     if not isinstance(N, (int, np.integer)) or N < 1:
         raise ValueError(f"N must be a positive integer, got {N!r}.")
