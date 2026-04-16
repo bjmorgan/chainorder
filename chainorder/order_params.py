@@ -235,7 +235,11 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     # of the (N, N, N, N) shifted-index tensor.
     phi_k = np.fft.fft2(phi)                                           # (N, N)
     numer = np.conj(np.fft.ifft2(np.abs(phi_k) ** 2)) / N ** 2         # (N, N)
-    result: np.ndarray = numer / power
+    # Suppress numpy's warning for the pathological case we handle explicitly
+    # below: subnormal `power` (or NaN in `numer`) would otherwise trigger
+    # 'invalid value encountered in divide' before the np.isfinite check.
+    with np.errstate(invalid="ignore"):
+        result: np.ndarray = numer / power
     # Subnormal `power` passes the exact-zero check but can push the division
     # into inf / NaN. Catch that here rather than silently returning NaN.
     if not np.all(np.isfinite(result)):

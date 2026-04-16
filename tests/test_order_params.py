@@ -308,6 +308,33 @@ def test_inter_chain_correlation_random_input_small_off_peak():
     assert np.abs(G[off_peak_mask]).mean() < 0.3
 
 
+def test_inter_chain_correlation_raises_on_non_finite_result():
+    """Post-division np.isfinite guard catches NaN/inf in the normalised G.
+
+    Reachable in practice only through a pathological `chain_fft` output
+    (the exact-zero power is caught upstream; ordinary chain arrays never
+    produce subnormal power in float64). Monkeypatch chain_fft to inject
+    NaN into the period-3 slice so the guard fires.
+    """
+    N = 6
+
+    def fake_chain_fft(arr, _orig=order_params.chain_fft):
+        result = _orig(arr).astype(complex)
+        result[0, 0, N // 3] = np.nan
+        return result
+
+    import chainorder.order_params as op
+    original = op.chain_fft
+    op.chain_fft = fake_chain_fft
+    try:
+        arr = np.zeros((N, N, N), dtype=int)
+        arr[0, 0, 0] = 1
+        with pytest.raises(ValueError, match="non-finite"):
+            op.inter_chain_correlation(arr)
+    finally:
+        op.chain_fft = original
+
+
 def test_inter_chain_correlation_raises_on_zero_amplitude():
     """All-O (or all-F) input has |phi| = 0 everywhere; correlation undefined."""
     N = 6
