@@ -179,15 +179,16 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
 
     Args:
         anion_direction: Binary species array along one chain direction,
-            shape (N, N, N).
+            shape `(N_lat0, N_lat1, N_chain)`. Last axis is along-chain.
 
     Returns:
         Complex array of shape (N, N). `G[da, db]` for da, db = 0..N-1.
 
     Raises:
-        ValueError: If N is not divisible by 3 (no well-defined period-3
-            phase), or if every chain has zero period-3 amplitude
-            (all-O or all-F input) so that the correlation is undefined.
+        ValueError: If the chain-direction length (`anion_direction.shape[-1]`)
+            is not divisible by 3 (no well-defined period-3 phase), or if
+            every chain has zero period-3 amplitude (all-O or all-F input)
+            so that the correlation is undefined.
     """
     N = anion_direction.shape[-1]
     if N % 3 != 0:
@@ -208,7 +209,7 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     # form uses the opposite lag sign, so take the complex conjugate to
     # match < phi(a, b) * conj(phi(a + da, b + db)) >.
     phi_k = np.fft.fft2(phi)                                           # (N, N)
-    numer = np.conj(np.fft.ifft2(np.abs(phi_k) ** 2)) / N ** 2         # (N, N)
+    numer = np.conj(np.fft.ifft2(np.abs(phi_k) ** 2)) / phi.size       # (Nx, Ny)
     return numer / power
 
 
