@@ -13,10 +13,15 @@ def build_nbo2f(
 ) -> Atoms:
     """Build an on-lattice NbO2F ASE Atoms from three (N, N, N) chain arrays.
 
-    `anion_x[j, k, i] == 1` -> F, `0` -> O. Same for y and z. Atom ordering
-    inside each block matches the decompose-test conventions (Nb first, then
-    x-, y-, z-anion blocks), so tests that reference `atoms.positions[i]` at
-    known indices continue to work.
+    Per-direction axis conventions match the build code below:
+
+    - ``anion_x[j, k, i] == 1`` -> F, ``0`` -> O
+    - ``anion_y[i, k, j] == 1`` -> F, ``0`` -> O
+    - ``anion_z[i, j, k] == 1`` -> F, ``0`` -> O
+
+    Atom ordering inside each block matches the decompose-test conventions
+    (Nb first, then x-, y-, z-anion blocks), so tests that reference
+    ``atoms.positions[i]`` at known indices continue to work.
     """
     ox, oy, oz = origin
     # idx0, idx1, idx2 sweep three axes in C order: flatten(N, N, N) is
