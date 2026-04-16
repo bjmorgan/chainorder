@@ -86,16 +86,20 @@ def decompose(
         Supports positional unpacking.
 
     Raises:
-        TypeError: If `origin` is not a sequence of three numbers (e.g.
-            `None`, an int, a string, or bytes).
+        TypeError: If `origin` is not a sized iterable of three numbers
+            (e.g. `None`, an int, a string, or bytes).
         ValueError: On any of the validation failures below -- invalid `N`
             (non-integer or non-positive); `origin` of wrong length, or
             with a component outside `[0.0, 1.0)`; cell containing non-
             finite values, not orthorhombic, non-positive on the diagonal,
             or not cubic; wrong cation or anion count for the given `N`;
             any atom off-lattice (integer or half-integer) beyond
-            tolerance; `species` absent from all anion sites; or a slot
-            collision during assignment.
+            tolerance (note: this includes passing the wrong `origin` --
+            e.g. default `(0.0, 0.0, 0.0)` on a body-centred structure
+            where the cations sit at `(0.5, 0.5, 0.5)` -- because the
+            assumed and actual sublattice positions then disagree);
+            `species` absent from all anion sites; or a slot collision
+            during assignment.
     """
     if not isinstance(N, (int, np.integer)) or N < 1:
         raise ValueError(f"N must be a positive integer, got {N!r}.")
@@ -119,22 +123,25 @@ def _validate_origin(
     through the `frac % 1.0` operation in `_build_indices`.
 
     Raises:
-        TypeError: If `origin` is not a sequence (e.g. `None`, `int`), or
-            contains a non-numeric component. Strings and bytes are
-            explicitly rejected even though they satisfy `len() == 3`,
-            because per-character `float()` would accept e.g. `"012"`.
+        TypeError: If `origin` is not a sized iterable (e.g. `None`,
+            `int`), or contains a non-numeric component. Strings, bytes,
+            and bytearrays are explicitly rejected even though they
+            satisfy `len() == 3`, because per-character `float()` would
+            accept e.g. `"012"`. Booleans are likewise rejected because
+            they subclass `int` and would silently cast to `0.0 / 1.0`.
         ValueError: If `origin` has the wrong number of components, or if
             any component lies outside `[0.0, 1.0)`.
     """
-    if isinstance(origin, (str, bytes)):
+    if isinstance(origin, (str, bytes, bytearray)):
         raise TypeError(
-            f"origin must be a sequence of three numbers, got {type(origin).__name__}."
+            f"origin must be a sized iterable of three numbers, got "
+            f"{type(origin).__name__}."
         )
     try:
         length = len(origin)
     except TypeError as exc:
         raise TypeError(
-            f"origin must be a sequence of three numbers, got "
+            f"origin must be a sized iterable of three numbers, got "
             f"{type(origin).__name__}."
         ) from exc
     if length != 3:
@@ -143,7 +150,10 @@ def _validate_origin(
         )
     components: list[float] = []
     for i, v in enumerate(origin):
-        if not isinstance(v, (int, float, np.integer, np.floating)):
+        # bool must precede (int, float) because bool is a subclass of int.
+        if isinstance(v, bool) or not isinstance(
+            v, (int, float, np.integer, np.floating)
+        ):
             raise TypeError(
                 f"origin[{i}] must be numeric (int or float), got "
                 f"{type(v).__name__}."

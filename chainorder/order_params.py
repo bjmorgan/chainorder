@@ -271,9 +271,15 @@ def structure_factor(
     matching reciprocal axis.
 
     Args:
-        anion_x: x-chain occupation, shape `(N, N, N)`, axes `(j, k, i)`.
-        anion_y: y-chain occupation, shape `(N, N, N)`, axes `(i, k, j)`.
-        anion_z: z-chain occupation, shape `(N, N, N)`, axes `(i, j, k)`.
+        anion_x: x-chain occupation, shape `(N, N, N)`. Axes are
+            `(j, k, i)`: real-space lateral positions `(j, k)` in the
+            `(y, z)` plane, position `i` along the x chain.
+        anion_y: y-chain occupation, shape `(N, N, N)`. Axes are
+            `(i, k, j)`: lateral positions `(i, k)` in the `(x, z)` plane,
+            position `j` along the y chain.
+        anion_z: z-chain occupation, shape `(N, N, N)`. Axes are
+            `(i, j, k)`: lateral positions `(i, j)` in the `(x, y)` plane,
+            position `k` along the z chain.
 
     Returns:
         Complex array of shape `(N, N, N)` with axes `(kx, ky, kz)`.
