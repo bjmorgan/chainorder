@@ -401,26 +401,44 @@ def test_structure_factor_all_directions_ordered_has_cubic_symmetry():
     np.testing.assert_allclose(np.abs(F[0, 0, 0]), 1.0, atol=1e-12)
 
 
-def test_structure_factor_single_x_anion_carries_sublattice_phase():
-    """A single x-anion at the origin pins the phase factor exp(-i*pi*kx/N) / N^3.
+@pytest.mark.parametrize("sublattice", ["x", "y", "z"])
+def test_structure_factor_single_anion_carries_sublattice_phase(sublattice):
+    """A single anion on sublattice `s` at the origin pins the phase factor
+    exp(-i*pi*k_s/N) / N^3, checking real AND imaginary parts.
 
     The single-atom FFT is 1 at every frequency; the transpose to canonical
     (kx, ky, kz) leaves it 1; the only non-trivial contribution is the
-    sublattice-offset phase exp(-i*pi*kx/N) along kx. Checking both the real
-    and imaginary parts (not just |F|) protects the phase factor against a
-    sign flip or a dropped term, neither of which the |F|-only tests
-    elsewhere would catch.
+    sublattice-offset phase exp(-i*pi*k_s/N) along the sublattice's own
+    reciprocal axis. Parametrised over all three sublattices so a copy-
+    paste bug in phase_y or phase_z is not masked by covering only x.
     """
     N = 6
-    ax = np.zeros((N, N, N), dtype=int)
-    ax[0, 0, 0] = 1
     zero = np.zeros((N, N, N), dtype=int)
-    F = order_params.structure_factor(ax, zero, zero)
-    # One F atom on the x-sublattice at lattice (j, k, i) = (0, 0, 0),
-    # sitting at +a/2 along x. F[kx, ky, kz] = exp(-i*pi*kx/N) / N^3.
-    for kx in range(N):
-        expected = np.exp(-1j * np.pi * kx / N) / N ** 3
-        np.testing.assert_allclose(F[kx, 0, 0], expected, atol=1e-12)
+    ax = zero.copy()
+    ay = zero.copy()
+    az = zero.copy()
+
+    if sublattice == "x":
+        ax[0, 0, 0] = 1
+    elif sublattice == "y":
+        ay[0, 0, 0] = 1
+    else:
+        az[0, 0, 0] = 1
+    F = order_params.structure_factor(ax, ay, az)
+
+    # Pick the axis along which the phase varies, keep the other two at 0.
+    for k in range(N):
+        expected = np.exp(-1j * np.pi * k / N) / N ** 3
+        if sublattice == "x":
+            actual = F[k, 0, 0]
+        elif sublattice == "y":
+            actual = F[0, k, 0]
+        else:
+            actual = F[0, 0, k]
+        np.testing.assert_allclose(
+            actual, expected, atol=1e-12,
+            err_msg=f"sublattice={sublattice}, k={k}",
+        )
 
 
 def test_structure_factor_raises_on_shape_mismatch():
