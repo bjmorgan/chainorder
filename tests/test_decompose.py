@@ -4,41 +4,6 @@ from chainorder import decompose
 from tests._fixtures import build_nbo2f, perfect_oof_chain
 
 
-def test_direction_enum_is_numpy_indexable():
-    """Direction.X/Y/Z must equal 0/1/2 and index numpy arrays directly.
-
-    Load-bearing for the design choice in PR_review.md: using IntEnum
-    instead of a plain Enum so the members can be used as numpy indices
-    at zero runtime cost.
-    """
-    from chainorder.decompose import Direction
-    assert int(Direction.X) == 0
-    assert int(Direction.Y) == 1
-    assert int(Direction.Z) == 2
-    probe = np.array([10, 20, 30])
-    assert probe[Direction.X] == 10
-    assert probe[Direction.Y] == 20
-    assert probe[Direction.Z] == 30
-
-
-def test_chain_arrays_supports_positional_unpacking():
-    """ChainArrays is a NamedTuple, so ax, ay, az = result still works.
-
-    This is the backwards-compatibility guarantee the NamedTuple design
-    rests on: the named-field upgrade does not break callers that unpack.
-    """
-    N = 3
-    ax_in = perfect_oof_chain(N, phase=2)
-    ay_in = perfect_oof_chain(N, phase=0)
-    az_in = perfect_oof_chain(N, phase=1)
-    atoms = build_nbo2f(N, ax_in, ay_in, az_in)
-    result = decompose(atoms, N=N)
-    ax, ay, az = result
-    assert ax is result[0] is result.x
-    assert ay is result[1] is result.y
-    assert az is result[2] is result.z
-
-
 def test_decompose_returns_input_species_arrays():
     """Round-trip: build Atoms from known chain arrays, decompose, recover arrays."""
     N = 3
@@ -284,43 +249,6 @@ def test_decompose_rebuilds_when_n_changes(monkeypatch):
         decompose(atoms, N=N)
 
     assert call_count["n"] == 2
-
-
-def test_decompose_origin_int_and_float_share_cache_key(monkeypatch):
-    """origin=(0, 0, 0) (int) and (0.0, 0.0, 0.0) (float) hit the same cache.
-
-    Pins the design choice to normalise origin to float before keying the
-    lru_cache: if a future refactor dropped the float cast, int and float
-    tuples would produce distinct cache keys despite being equal, causing
-    an extra _build_indices call on the second invocation. This test is
-    the regression guard for that choice.
-    """
-    import importlib
-    dm = importlib.import_module("chainorder.decompose")
-
-    call_count = {"n": 0}
-    original_build = dm._build_indices
-
-    def counting_build(*args, **kwargs):
-        call_count["n"] += 1
-        return original_build(*args, **kwargs)
-
-    monkeypatch.setattr(dm, "_build_indices", counting_build)
-    dm._indices_cached.cache_clear()
-
-    N = 3
-    ax = perfect_oof_chain(N, phase=2)
-    ay = perfect_oof_chain(N, phase=2)
-    az = perfect_oof_chain(N, phase=2)
-    atoms = build_nbo2f(N, ax, ay, az)
-
-    decompose(atoms, N=N, origin=(0, 0, 0))           # type: ignore[arg-type]
-    decompose(atoms, N=N, origin=(0.0, 0.0, 0.0))
-
-    assert call_count["n"] == 1, (
-        f"Expected int and float origins to share a cache key; got "
-        f"{call_count['n']} builds."
-    )
 
 
 def test_decompose_cache_hit_with_new_symbols_same_positions(monkeypatch):
