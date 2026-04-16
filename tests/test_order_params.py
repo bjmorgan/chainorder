@@ -51,6 +51,20 @@ def test_chain_fft_normalisation_period_4_in_N_12():
     np.testing.assert_allclose(np.abs(fft[..., N // p]), 1.0 / p, atol=1e-12)
 
 
+def test_chain_fft_is_hermitian_for_real_input():
+    """|F_k| == |F_{N-k}| for real input. Catches any regression in the
+    FFT axis or direction."""
+    N = 6
+    rng = np.random.default_rng(7)
+    arr = rng.integers(0, 2, size=(N, N, N))
+    fft = order_params.chain_fft(arr)
+    for k in range(1, N):
+        np.testing.assert_allclose(
+            np.abs(fft[..., k]), np.abs(fft[..., N - k]), atol=1e-12,
+            err_msg=f"Hermitian symmetry broken at k={k}",
+        )
+
+
 def test_chain_fft_normalisation_period_3_in_N_9():
     """One F per period-3 at N=9: |phi_{N/3}| = 1/3."""
     N = 9
