@@ -1,27 +1,11 @@
-"""Order parameters for ReO3-type anion ordering (chain-level statistics)."""
+"""Order parameters for ReO3-type anion ordering (chain-level statistics).
+
+All functions here expect the shape-``(N, N, N)`` binary integer arrays
+produced by `chainorder.decompose`. They do no additional input validation
+on shape or dtype: passing something else is the caller's mistake and will
+surface as an ordinary numpy error.
+"""
 import numpy as np
-
-
-def _check_binary_chain_array(arr: np.ndarray, *, name: str = "anion_direction") -> None:
-    """Validate that `arr` is a 3D cubic integer array (contract for order-param inputs).
-
-    Value check (``0 <= arr <= 1``) is deliberately omitted: `decompose`
-    produces 0/1 output by construction, so the guard here is about catching
-    non-integer arrays (float buckets where the `|F| = 1/p` normalisation
-    identity would silently decay) and wrong-shape inputs.
-    """
-    if arr.ndim != 3 or not (arr.shape[0] == arr.shape[1] == arr.shape[2]):
-        raise ValueError(
-            f"{name} must be a cubic 3D array (shape (N, N, N)), got "
-            f"shape {arr.shape}."
-        )
-    if not np.issubdtype(arr.dtype, np.integer):
-        raise TypeError(
-            f"{name} must have integer dtype, got {arr.dtype}. Order-parameter "
-            f"functions assume the binary species encoding produced by "
-            f"`decompose` and their normalisation identities do not hold for "
-            f"float inputs."
-        )
 
 
 def chain_fft(anion_direction: np.ndarray) -> np.ndarray:
@@ -29,7 +13,7 @@ def chain_fft(anion_direction: np.ndarray) -> np.ndarray:
 
     Args:
         anion_direction: Binary species array along one chain direction (from
-            `decompose()`), shape (N, N, N), integer dtype.
+            `decompose()`), shape (N, N, N).
 
     Returns:
         Complex array of shape (N, N, N). Last axis is the Fourier index
@@ -37,12 +21,7 @@ def chain_fft(anion_direction: np.ndarray) -> np.ndarray:
         For a chain that is strictly periodic with period `p` (N divisible
         by `p`, exactly one flagged atom per period), the DC component and
         the peak at `k = N // p` each have magnitude `1 / p`.
-
-    Raises:
-        TypeError: If `anion_direction` has non-integer dtype.
-        ValueError: If `anion_direction` is not cubic 3D.
     """
-    _check_binary_chain_array(anion_direction)
     N = anion_direction.shape[-1]
     return np.fft.fft(anion_direction, axis=-1) / N
 
@@ -91,7 +70,12 @@ def motif_counts(
             f"window_length must be an integer, got "
             f"{type(window_length).__name__}."
         )
-    _check_binary_chain_array(anion_direction)
+    if not np.issubdtype(anion_direction.dtype, np.integer):
+        raise TypeError(
+            f"anion_direction must have integer dtype for motif counting; "
+            f"got {anion_direction.dtype}. The bit-packed canonicalisation "
+            f"truncates floats silently and would give wrong answers."
+        )
     N = anion_direction.shape[-1]
     w = int(window_length)
     if w < 1:
@@ -149,16 +133,11 @@ def along_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
 
     Args:
         anion_direction: Binary species array along one chain direction,
-            shape (N, N, N), integer dtype.
+            shape (N, N, N).
 
     Returns:
         g(r) for r = 0, 1, ..., N-1, shape (N,).
-
-    Raises:
-        TypeError: If `anion_direction` has non-integer dtype.
-        ValueError: If `anion_direction` is not cubic 3D.
     """
-    _check_binary_chain_array(anion_direction)
     N = anion_direction.shape[-1]
     s_mean = float(anion_direction.mean())
 
@@ -202,21 +181,16 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
 
     Args:
         anion_direction: Binary species array along one chain direction,
-            shape (N, N, N), integer dtype.
+            shape (N, N, N).
 
     Returns:
         Complex array of shape (N, N). `G[da, db]` for da, db = 0..N-1.
 
     Raises:
-        TypeError: If `anion_direction` has non-integer dtype.
-        ValueError: If `anion_direction` is not cubic 3D, if N is not
-            divisible by 3 (no well-defined period-3 phase), or if the
-            mean period-3 power is zero or small enough that the
-            normalised result is not finite (e.g. all-O or all-F input,
-            or subnormal power). To generalise to other wavevectors,
-            compute `chain_fft` and extract the component manually.
+        ValueError: If N is not divisible by 3 (no well-defined period-3
+            phase), or if every chain has zero period-3 amplitude
+            (all-O or all-F input) so that the correlation is undefined.
     """
-    _check_binary_chain_array(anion_direction)
     N = anion_direction.shape[-1]
     if N % 3 != 0:
         raise ValueError(
@@ -234,24 +208,10 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     # Wiener-Khinchin: IFFT2(|FFT2(phi)|^2) / N^2 is the spatial
     # autocorrelation < phi(a, b) * conj(phi(a - da, b - db)) >. The direct
     # form uses the opposite lag sign, so take the complex conjugate to
-    # match < phi(a, b) * conj(phi(a + da, b + db)) >. O(N^2 log N) instead
-    # of the (N, N, N, N) shifted-index tensor.
+    # match < phi(a, b) * conj(phi(a + da, b + db)) >.
     phi_k = np.fft.fft2(phi)                                           # (N, N)
     numer = np.conj(np.fft.ifft2(np.abs(phi_k) ** 2)) / N ** 2         # (N, N)
-    # Suppress numpy's warning for the pathological case we handle explicitly
-    # below: subnormal `power` (or NaN in `numer`) would otherwise trigger
-    # 'invalid value encountered in divide' before the np.isfinite check.
-    with np.errstate(invalid="ignore"):
-        result: np.ndarray = numer / power
-    # Subnormal `power` passes the exact-zero check but can push the division
-    # into inf / NaN. Catch that here rather than silently returning NaN.
-    if not np.all(np.isfinite(result)):
-        raise ValueError(
-            "inter_chain_correlation produced non-finite output; the mean "
-            "period-3 power is too small for reliable normalisation. "
-            f"power = {power!r}."
-        )
-    return result
+    return numer / power
 
 
 def structure_factor(
@@ -298,9 +258,6 @@ def structure_factor(
         np.zeros_like(ax))` returns the x-sublattice contribution alone.
         For per-chain (not cross-chain) analysis use `chain_fft` instead.
     """
-    _check_binary_chain_array(anion_x, name="anion_x")
-    _check_binary_chain_array(anion_y, name="anion_y")
-    _check_binary_chain_array(anion_z, name="anion_z")
     if anion_x.shape != anion_y.shape or anion_x.shape != anion_z.shape:
         raise ValueError(
             f"All three sublattice arrays must have the same shape; got "
