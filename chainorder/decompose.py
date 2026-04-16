@@ -354,12 +354,15 @@ def _apply_indices(
     Args:
         symbols: Chemical symbols per atom, shape (n_atoms,).
         indices: Cached decomposition map from `_build_indices`,
-            shape (3, N, N, N).
+            shape (3, Nx, Ny, Nz), xyz-coord indexed.
         species: Element symbol to flag as 1. Others are flagged 0.
 
     Returns:
-        `ChainArrays` namedtuple of three integer arrays, each shape
-        (N, N, N).
+        `ChainArrays` namedtuple of three integer arrays with
+        direction-specific shapes: `x` is (Ny, Nz, Nx), `y` is
+        (Nx, Nz, Ny), `z` is (Nx, Ny, Nz). Each has the same dtype
+        as the flagged-species mask. In the cubic case Nx=Ny=Nz=N
+        these all reduce to (N, N, N).
     """
     anion_symbols = symbols[indices]
     is_species = (anion_symbols == species).astype(np.int64)
