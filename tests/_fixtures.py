@@ -13,43 +13,52 @@ def build_nbo2f(
 ) -> Atoms:
     """Build an on-lattice NbO2F ASE Atoms from three (N, N, N) chain arrays.
 
-    anion_x[j, k, i] == 1 -> F, 0 -> O. Same for y and z.
+    `anion_x[j, k, i] == 1` -> F, `0` -> O. Same for y and z. Atom ordering
+    inside each block matches the decompose-test conventions (Nb first, then
+    x-, y-, z-anion blocks), so tests that reference `atoms.positions[i]` at
+    known indices continue to work.
     """
-    positions = []
-    symbols = []
     ox, oy, oz = origin
+    # idx0, idx1, idx2 sweep three axes in C order: flatten(N, N, N) is
+    # outer-idx0, middle-idx1, inner-idx2 -- identical to the original
+    # triple loop. The variable-name aliases below mark which lattice
+    # index each axis represents for each atom block.
+    idx0, idx1, idx2 = np.meshgrid(
+        np.arange(N), np.arange(N), np.arange(N), indexing="ij"
+    )
 
-    # Nb atoms at integer grid positions
-    for i in range(N):
-        for j in range(N):
-            for k in range(N):
-                positions.append([(i + ox) * a, (j + oy) * a, (k + oz) * a])
-                symbols.append("Nb")
+    # Cation: outer i, middle j, inner k. Position (i+ox, j+oy, k+oz) * a.
+    cation_pos = np.stack(
+        [(idx0 + ox) * a, (idx1 + oy) * a, (idx2 + oz) * a], axis=-1
+    ).reshape(-1, 3)
+    cation_sym = np.full(N ** 3, "Nb", dtype="<U2")
 
-    # x-anions at (i + 0.5, j, k)
-    for j in range(N):
-        for k in range(N):
-            for i in range(N):
-                positions.append([(i + 0.5 + ox) * a, (j + oy) * a, (k + oz) * a])
-                symbols.append("F" if anion_x[j, k, i] else "O")
+    # x-anion: outer j, middle k, inner i; at (i+0.5+ox, j+oy, k+oz) * a.
+    j_x, k_x, i_x = idx0, idx1, idx2
+    x_pos = np.stack(
+        [(i_x + 0.5 + ox) * a, (j_x + oy) * a, (k_x + oz) * a], axis=-1
+    ).reshape(-1, 3)
+    x_sym = np.where(anion_x[j_x, k_x, i_x].astype(bool), "F", "O").reshape(-1)
 
-    # y-anions at (i, j + 0.5, k)
-    for i in range(N):
-        for k in range(N):
-            for j in range(N):
-                positions.append([(i + ox) * a, (j + 0.5 + oy) * a, (k + oz) * a])
-                symbols.append("F" if anion_y[i, k, j] else "O")
+    # y-anion: outer i, middle k, inner j; at (i+ox, j+0.5+oy, k+oz) * a.
+    i_y, k_y, j_y = idx0, idx1, idx2
+    y_pos = np.stack(
+        [(i_y + ox) * a, (j_y + 0.5 + oy) * a, (k_y + oz) * a], axis=-1
+    ).reshape(-1, 3)
+    y_sym = np.where(anion_y[i_y, k_y, j_y].astype(bool), "F", "O").reshape(-1)
 
-    # z-anions at (i, j, k + 0.5)
-    for i in range(N):
-        for j in range(N):
-            for k in range(N):
-                positions.append([(i + ox) * a, (j + oy) * a, (k + 0.5 + oz) * a])
-                symbols.append("F" if anion_z[i, j, k] else "O")
+    # z-anion: outer i, middle j, inner k; at (i+ox, j+oy, k+0.5+oz) * a.
+    i_z, j_z, k_z = idx0, idx1, idx2
+    z_pos = np.stack(
+        [(i_z + ox) * a, (j_z + oy) * a, (k_z + 0.5 + oz) * a], axis=-1
+    ).reshape(-1, 3)
+    z_sym = np.where(anion_z[i_z, j_z, k_z].astype(bool), "F", "O").reshape(-1)
 
+    positions = np.concatenate([cation_pos, x_pos, y_pos, z_pos])
+    symbols = np.concatenate([cation_sym, x_sym, y_sym, z_sym]).tolist()
     return Atoms(
         symbols=symbols,
-        positions=np.array(positions),
+        positions=positions,
         cell=np.diag([N * a, N * a, N * a]),
         pbc=True,
     )
