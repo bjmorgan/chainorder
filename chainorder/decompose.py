@@ -1,5 +1,6 @@
 """Decompose on-lattice ReO3-type supercells into chain arrays."""
 from functools import lru_cache
+from typing import NamedTuple
 
 import numpy as np
 from ase import Atoms
@@ -8,12 +9,33 @@ from ase import Atoms
 _TOL = 1e-6
 
 
+class ChainArrays(NamedTuple):
+    """Three per-direction anion occupation arrays from a ReO3-type supercell.
+
+    Each field is a shape-``(N, N, N)`` integer array. The last axis is
+    always along-chain; the first two indices identify the chain's lateral
+    position in the sublattice:
+
+    - ``x[j, k, i]``: x-chain at lateral position ``(j, k)``, site ``i`` along x.
+    - ``y[i, k, j]``: y-chain at lateral position ``(i, k)``, site ``j`` along y.
+    - ``z[i, j, k]``: z-chain at lateral position ``(i, j)``, site ``k`` along z.
+
+    Supports positional unpacking (``ax, ay, az = decompose(...)``) as well
+    as attribute access (``result.x``). The latter is safer for downstream
+    use since it removes the risk of silently transposing the tuple.
+    """
+
+    x: np.ndarray
+    y: np.ndarray
+    z: np.ndarray
+
+
 def decompose(
     atoms: Atoms,
     N: int,
     origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
     species: str = "F",
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> ChainArrays:
     """Decompose an on-lattice ReO3-type supercell into three chain arrays.
 
     Identifies each anion from its fractional coordinates (half-integer in
@@ -35,9 +57,10 @@ def decompose(
             `"F"`; all other anion species are flagged 0.
 
     Returns:
-        Three integer arrays `(anion_x, anion_y, anion_z)`, each of shape
-        (N, N, N). For each array the first two indices identify the chain
-        and the last index is position along the chain.
+        A `ChainArrays` namedtuple with fields `x`, `y`, `z`, each a shape
+        `(N, N, N)` integer array. For each array the first two indices
+        identify the chain and the last index is position along the chain.
+        Supports positional unpacking.
 
     Raises:
         ValueError: If the cell is not orthorhombic, the atom count is wrong
@@ -190,7 +213,7 @@ def _apply_indices(
     symbols: np.ndarray,
     indices: np.ndarray,
     species: str,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> ChainArrays:
     """Apply a cached index map to produce three (N, N, N) binary arrays.
 
     Args:
@@ -200,8 +223,8 @@ def _apply_indices(
         species: Element symbol to flag as 1. Others are flagged 0.
 
     Returns:
-        Three integer arrays `(anion_x, anion_y, anion_z)`, each shape
+        `ChainArrays` namedtuple of three integer arrays, each shape
         (N, N, N).
     """
     is_species = (symbols[indices] == species).astype(np.int64)
-    return is_species[0], is_species[1], is_species[2]
+    return ChainArrays(x=is_species[0], y=is_species[1], z=is_species[2])
