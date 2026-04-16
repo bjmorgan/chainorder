@@ -11,8 +11,10 @@ def chain_fft(anion_direction: np.ndarray) -> np.ndarray:
 
     Returns:
         Complex array of shape (N, N, N). Last axis is the Fourier index
-        k = 0, 1, ..., N-1. Normalised so that a chain with exactly one
-        flagged atom per period-p gives `|tilde_s_{N/p}| = 1/p`.
+        k = 0, 1, ..., N-1. Computed as `np.fft.fft(arr, axis=-1) / N`.
+        For a chain that is strictly periodic with period `p` (N divisible
+        by `p`, exactly one flagged atom per period), the DC component and
+        the peak at `k = N // p` each have magnitude `1 / p`.
     """
     N = anion_direction.shape[-1]
     return np.fft.fft(anion_direction, axis=-1) / N
