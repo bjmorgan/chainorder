@@ -54,7 +54,7 @@ class ChainArrays(NamedTuple):
 
 def decompose(
     atoms: Atoms,
-    N: int,
+    N: int | tuple[int, int, int],
     origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
     species: str = "F",
 ) -> ChainArrays:
@@ -102,15 +102,50 @@ def decompose(
             structure); `species` absent from all anion sites; or a slot
             collision during assignment.
     """
-    if not isinstance(N, (int, np.integer)) or N < 1:
-        raise ValueError(f"N must be a positive integer, got {N!r}.")
-    N = int(N)
+    shape = _validate_shape(N)
     origin = _validate_origin(origin)
     positions = np.ascontiguousarray(atoms.positions, dtype=np.float64)
     cell = np.ascontiguousarray(atoms.cell.array, dtype=np.float64)
-    indices = _indices_cached(positions.tobytes(), cell.tobytes(), N, origin)
+    indices = _indices_cached(positions.tobytes(), cell.tobytes(), shape, origin)
     symbols = np.array(atoms.get_chemical_symbols())
     return _apply_indices(symbols, indices, species)
+
+
+def _validate_shape(
+    N: int | tuple[int, int, int],
+) -> tuple[int, int, int]:
+    """Normalise `N` to a canonical (Nx, Ny, Nz) tuple of positive ints.
+
+    Accepts scalar (cubic shorthand) or a 3-tuple. Rejects wrong length,
+    non-integer elements, or non-positive elements with `ValueError`.
+    """
+    if isinstance(N, (int, np.integer)):
+        if N < 1:
+            raise ValueError(f"N must be a positive integer, got {N!r}.")
+        return (int(N), int(N), int(N))
+    # Tuple path
+    try:
+        items = tuple(N)
+    except TypeError:
+        raise ValueError(
+            f"N must be a positive integer or a 3-tuple of positive "
+            f"integers, got {N!r}."
+        )
+    if len(items) != 3:
+        raise ValueError(
+            f"N tuple must have length 3 (Nx, Ny, Nz), got length "
+            f"{len(items)}: {N!r}."
+        )
+    out: list[int] = []
+    for axis, v in zip(("Nx", "Ny", "Nz"), items):
+        if not isinstance(v, (int, np.integer)):
+            raise ValueError(
+                f"{axis} must be an integer, got {type(v).__name__} ({v!r})."
+            )
+        if v < 1:
+            raise ValueError(f"{axis} must be a positive integer, got {v}.")
+        out.append(int(v))
+    return (out[0], out[1], out[2])
 
 
 def _validate_origin(
@@ -136,7 +171,7 @@ def _validate_origin(
 def _indices_cached(
     positions_bytes: bytes,
     cell_bytes: bytes,
-    N: int,
+    shape: tuple[int, int, int],
     origin: tuple[float, float, float],
 ) -> np.ndarray:
     """Cache the decomposition map for one ``(positions, cell, N, origin)`` key.
@@ -149,13 +184,13 @@ def _indices_cached(
     """
     positions = np.frombuffer(positions_bytes, dtype=np.float64).reshape(-1, 3)
     cell = np.frombuffer(cell_bytes, dtype=np.float64).reshape(3, 3)
-    return _build_indices(positions, cell, N, origin)
+    return _build_indices(positions, cell, shape, origin)
 
 
 def _build_indices(
     positions: np.ndarray,
     cell: np.ndarray,
-    N: int,
+    shape: tuple[int, int, int],
     origin: tuple[float, float, float],
 ) -> np.ndarray:
     """Build the atom-to-chain-slot index mapping.
@@ -163,7 +198,7 @@ def _build_indices(
     Args:
         positions: Cartesian atom positions in Angstroms, shape (n_atoms, 3).
         cell: Orthorhombic cell matrix in Angstroms, shape (3, 3).
-        N: Supercell size per axis.
+        shape: Supercell size per axis as a (Nx, Ny, Nz) tuple.
         origin: Cation position in unit-cell fractional coordinates.
 
     Returns:
@@ -174,6 +209,15 @@ def _build_indices(
         ValueError: On non-orthorhombic cells, off-lattice atoms, wrong atom
             counts, or slot collisions.
     """
+    Nx, Ny, Nz = shape
+    # Temporary: existing code below uses a single `N` scalar and the
+    # cubic check. Task 4 replaces this with per-axis broadcasting.
+    if not (Nx == Ny == Nz):
+        raise ValueError(
+            f"Non-cubic shape {shape} is not yet supported. "
+            f"This restriction is lifted in a later commit."
+        )
+    N = Nx
     # Finite check on the whole matrix: NaN anywhere in `cell` would propagate
     # silently through the orthorhombic threshold (`NaN > x` is False) and
     # the on-lattice check, giving platform-dependent int garbage downstream.
