@@ -251,6 +251,32 @@ def test_decompose_rebuilds_when_n_changes(monkeypatch):
     assert call_count["n"] == 2
 
 
+def test_decompose_scalar_and_tuple_N_equivalent(monkeypatch):
+    """decompose(atoms, N=3) and decompose(atoms, N=(3, 3, 3)) produce
+    bit-identical ChainArrays and hit the same cache entry."""
+    import importlib
+    dm = importlib.import_module("chainorder.decompose")
+    dm._indices_cached.cache_clear()
+
+    N = 3
+    ax_in = perfect_oof_chain(N, phase=2)
+    ay_in = perfect_oof_chain(N, phase=0)
+    az_in = perfect_oof_chain(N, phase=1)
+    atoms = build_nbo2f(N, ax_in, ay_in, az_in)
+
+    out_scalar = decompose(atoms, N=3)
+    hits_after_scalar = dm._indices_cached.cache_info().hits
+    out_tuple = decompose(atoms, N=(3, 3, 3))
+    hits_after_tuple = dm._indices_cached.cache_info().hits
+
+    np.testing.assert_array_equal(out_scalar.x, out_tuple.x)
+    np.testing.assert_array_equal(out_scalar.y, out_tuple.y)
+    np.testing.assert_array_equal(out_scalar.z, out_tuple.z)
+    assert hits_after_tuple == hits_after_scalar + 1, (
+        "Tuple form should hit the cache entry populated by the scalar form."
+    )
+
+
 def test_decompose_cache_hit_with_new_symbols_same_positions(monkeypatch):
     """Two Atoms with identical positions/cell but different F/O patterns:
     second call is a cache hit AND produces the correct per-symbols output."""
