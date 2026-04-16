@@ -124,28 +124,40 @@ def along_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
 
 
 def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
-    """Phase correlation between parallel chains, as a function of lateral separation.
+    """Inter-chain correlation of the period-3 Fourier component.
 
-    `G[da, db] = < exp(i * (arg(phi(a, b)) - arg(phi(a + da, b + db)))) >`,
-    where `phi(a, b)` is the Fourier coefficient at `k = N / 3` for the chain
-    at lateral position `(a, b)` (i.e. the first two indices of the input
-    array), and the average is over all `(a, b)` pairs.
+    For each chain at lateral position `(a, b)`, let `phi(a, b)` be the
+    Fourier coefficient at `k = N / 3` (i.e. the amplitude and phase of
+    period-3 ordering on that chain). This function returns the spatial
+    autocorrelation of `phi` across the chain plane, normalised so that
+    `G[0, 0] = 1`:
 
-    Meaningful only when chains individually show OOF order (|phi| is
-    substantial). If chains are disordered, the phases are noise and the
-    correlations are uninterpretable.
+        G[da, db] = < phi(a, b) * conj(phi(a + da, b + db)) > / < |phi|^2 >
+
+    where the averages run over all `(a, b)` pairs (with periodic wrap in
+    `a, b`). Amplitude-weighted: chains with small `|phi|` (disordered)
+    contribute proportionally less, so disordered input gives `|G| ~ 0`
+    off the origin by construction — no threshold or guard required.
+
+    `|G|` ranges from `~0` (uncorrelated) to `1` (fully phase-locked);
+    `arg(G)` encodes the phase pattern (`0` for uniform alignment, a
+    linear gradient for a striped arrangement, etc.). Phase-only
+    correlation is trivially recoverable as `G / |G|` where `|G|` is
+    non-zero.
 
     Args:
         anion_direction: Binary species array along one chain direction,
             shape (N, N, N).
 
     Returns:
-        Complex array of shape (N, N). `G[da, db]` for da, db = 0, ..., N-1.
+        Complex array of shape (N, N). `G[da, db]` for da, db = 0..N-1.
 
     Raises:
         ValueError: If N is not divisible by 3 (no well-defined period-3
-            phase). To generalise to other wavevectors, compute `chain_fft`
-            and extract phases manually.
+            phase). To generalise to other wavevectors, compute
+            `chain_fft` and extract the component manually.
+        ValueError: If every chain has `|phi| = 0` (e.g. all-O or all-F
+            input); the correlation is undefined.
     """
     N = anion_direction.shape[-1]
     if N % 3 != 0:
@@ -154,16 +166,21 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
             f"phase), got N={N}."
         )
     phi = chain_fft(anion_direction)[..., N // 3]                      # (N, N)
-    v = np.exp(1j * np.angle(phi))                                     # (N, N), unit modulus
+    power = float(np.mean(np.abs(phi) ** 2))
+    if power == 0.0:
+        raise ValueError(
+            "All chains have zero period-3 amplitude; correlation is "
+            "undefined. Inspect chain_fft(arr)[..., N // 3] to confirm."
+        )
 
-    # Build shifted[da, db, a, b] = v[(a + da) % N, (b + db) % N] via
+    # shifted[da, db, a, b] = phi[(a + da) % N, (b + db) % N] via
     # broadcast-aware advanced indexing; no Python loops.
     idx = np.arange(N)
     a_idx = (idx[:, None, None, None] + idx[None, None, :, None]) % N  # (N_da, 1, N_a, 1)
     b_idx = (idx[None, :, None, None] + idx[None, None, None, :]) % N  # (1, N_db, 1, N_b)
-    shifted = v[a_idx, b_idx]                                          # (N, N, N, N)
+    shifted = phi[a_idx, b_idx]                                        # (N, N, N, N)
 
-    return np.mean(v[None, None] * np.conj(shifted), axis=(2, 3))
+    return np.mean(phi[None, None] * np.conj(shifted), axis=(2, 3)) / power
 
 
 def structure_factor(
