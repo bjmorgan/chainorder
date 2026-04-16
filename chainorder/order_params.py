@@ -1,9 +1,7 @@
 """Order parameters for ReO3-type anion ordering (chain-level statistics).
 
 All functions here expect the shape-``(N, N, N)`` binary integer arrays
-produced by `chainorder.decompose`. They do no additional input validation
-on shape or dtype: passing something else is the caller's mistake and will
-surface as an ordinary numpy error.
+produced by `chainorder.decompose`.
 """
 import numpy as np
 
