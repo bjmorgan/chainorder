@@ -1,4 +1,5 @@
 """Decompose on-lattice ReO3-type supercells into chain arrays."""
+from enum import IntEnum
 from functools import lru_cache
 from typing import NamedTuple
 
@@ -7,6 +8,18 @@ from ase import Atoms
 
 
 _TOL = 1e-6
+
+
+class Direction(IntEnum):
+    """Chain-direction indices into the first axis of the `_build_indices` map.
+
+    Values are integers (`IntEnum`) so the members can be used directly as
+    numpy indices (`indices[Direction.X, ...]`).
+    """
+
+    X = 0
+    Y = 1
+    Z = 2
 
 
 class ChainArrays(NamedTuple):
@@ -190,14 +203,14 @@ def _build_indices(
     coord = (half_rounded // 2) % N   # integer part of scaled coords, wrapped
 
     for atom_idx in anion_atoms:
-        direction = int(np.argmax(is_half[atom_idx]))
+        direction = Direction(int(np.argmax(is_half[atom_idx])))
         i, j, k = int(coord[atom_idx, 0]), int(coord[atom_idx, 1]), int(coord[atom_idx, 2])
-        if direction == 0:    # x-anion: chain (j, k), position i
-            indices[0, j, k, i] = atom_idx
-        elif direction == 1:  # y-anion: chain (i, k), position j
-            indices[1, i, k, j] = atom_idx
-        else:                 # z-anion: chain (i, j), position k
-            indices[2, i, j, k] = atom_idx
+        if direction is Direction.X:    # x-anion: chain (j, k), position i
+            indices[Direction.X, j, k, i] = atom_idx
+        elif direction is Direction.Y:  # y-anion: chain (i, k), position j
+            indices[Direction.Y, i, k, j] = atom_idx
+        else:                           # z-anion: chain (i, j), position k
+            indices[Direction.Z, i, j, k] = atom_idx
 
     if np.any(indices == -1):
         raise ValueError(
