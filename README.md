@@ -50,7 +50,7 @@ sf = order_params.structure_factor(occ)                      # 3D structure fact
 spectrum = order_params.chain_fft(occ.x)                     # per x-chain FFT
 g_r = order_params.along_chain_correlation(occ.x)            # g(r) along x-chains
 counts = order_params.motif_counts(occ.x, window_length=3)   # cyclic motif tallies
-G = order_params.inter_chain_correlation(occ.x)              # period-3 phase correlation
+G = order_params.inter_chain_correlation(occ.x, period=3)   # period-p phase correlation
 ```
 
 A full trajectory is just a loop: per frame, build a
@@ -74,8 +74,8 @@ A full trajectory is just a loop: per frame, build a
     grand-averaged over the chain-plane.
   - `motif_counts(arr, window_length=N)` -- tallies of cyclic-equivalent
     length-`window_length` motifs per chain.
-  - `inter_chain_correlation(arr)` -- spatial autocorrelation of the
-    period-3 Fourier component across the chain plane.
+  - `inter_chain_correlation(arr, period=p)` -- spatial autocorrelation
+    of the period-`p` Fourier component across the chain plane.
 
 `structure_factor` takes the whole `SublatticeOccupation`; the other
 four take a single chain-layout array (`occ.x`, `occ.y`, or `occ.z`).

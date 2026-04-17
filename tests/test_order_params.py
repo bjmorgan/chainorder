@@ -288,7 +288,7 @@ def test_inter_chain_correlation_all_same_phase(shape):
     """All chains have identical OOF phase -> |G[dj, dk]| = 1 everywhere."""
     Nx, Ny, Nz = shape
     arr = perfect_oof_chain(shape, phase=2, direction="z")
-    G = order_params.inter_chain_correlation(arr)
+    G = order_params.inter_chain_correlation(arr, period=3)
     assert G.shape == (Nx, Ny)
     np.testing.assert_allclose(np.abs(G), 1.0, atol=1e-12)
 
@@ -300,16 +300,16 @@ def test_inter_chain_correlation_zero_lag_is_one(shape):
     rng = np.random.default_rng(0)
     # Random OOF-like array (not strictly periodic, but OK for G[0,0] test)
     arr = rng.integers(0, 2, size=(Nx, Ny, Nz))
-    G = order_params.inter_chain_correlation(arr)
+    G = order_params.inter_chain_correlation(arr, period=3)
     np.testing.assert_allclose(G[0, 0], 1.0, atol=1e-12)
 
 
-def test_inter_chain_correlation_raises_when_N_not_divisible_by_3():
+def test_inter_chain_correlation_raises_when_N_not_divisible_by_period():
     """N=4 has no well-defined period-3 Fourier index."""
     N = 4
     arr = np.zeros((N, N, N), dtype=int)
-    with pytest.raises(ValueError, match="divisible by 3"):
-        order_params.inter_chain_correlation(arr)
+    with pytest.raises(ValueError, match="divisible by period"):
+        order_params.inter_chain_correlation(arr, period=3)
 
 
 @pytest.mark.parametrize("shape", ICC_ROT_SHAPES)
@@ -327,7 +327,7 @@ def test_inter_chain_correlation_rotating_phase(shape):
         for i in range(Nz):
             if i % 3 == phase:
                 arr[a, :, i] = 1
-    G = order_params.inter_chain_correlation(arr)
+    G = order_params.inter_chain_correlation(arr, period=3)
     for da in range(Nx):
         expected = np.exp(2j * np.pi * da / 3)
         np.testing.assert_allclose(
@@ -342,7 +342,7 @@ def test_inter_chain_correlation_random_input_small_off_peak(shape):
     Nx, Ny, Nz = shape
     rng = np.random.default_rng(0)
     arr = rng.integers(0, 2, size=(Nx, Ny, Nz))
-    G = order_params.inter_chain_correlation(arr)
+    G = order_params.inter_chain_correlation(arr, period=3)
     # G[0, 0] is exactly 1 by construction.
     np.testing.assert_allclose(G[0, 0], 1.0, atol=1e-12)
     # Off-origin: expected scale ~ 1/N for N-by-N independent complex samples,
@@ -362,7 +362,7 @@ def test_inter_chain_correlation_lateral_shape_not_divisible_by_3():
     for i in range(6):
         if i % 3 == 2:
             arr[:, :, i] = 1
-    G = order_params.inter_chain_correlation(arr)
+    G = order_params.inter_chain_correlation(arr, period=3)
     assert G.shape == (2, 4)
     # All chains have identical OOF phase -> |G| = 1 everywhere.
     np.testing.assert_allclose(np.abs(G), 1.0, atol=1e-12)
@@ -373,10 +373,34 @@ def test_inter_chain_correlation_raises_on_zero_amplitude():
     N = 6
     arr = np.zeros((N, N, N), dtype=int)
     with pytest.raises(ValueError, match="undefined"):
-        order_params.inter_chain_correlation(arr)
+        order_params.inter_chain_correlation(arr, period=3)
     arr_full = np.ones((N, N, N), dtype=int)
     with pytest.raises(ValueError, match="undefined"):
-        order_params.inter_chain_correlation(arr_full)
+        order_params.inter_chain_correlation(arr_full, period=3)
+
+
+def test_inter_chain_correlation_accepts_arbitrary_period():
+    """`period` targets any harmonic, not just period-3. A period-2 alternating
+    chain with in-phase chains gives |G| = 1 everywhere when analysed at
+    period=2."""
+    N = 6
+    arr = np.zeros((N, N, N), dtype=int)
+    # Period-2 along the chain axis: F at every odd site, on every chain.
+    for i in range(N):
+        if i % 2 == 1:
+            arr[:, :, i] = 1
+    G = order_params.inter_chain_correlation(arr, period=2)
+    assert G.shape == (N, N)
+    np.testing.assert_allclose(np.abs(G), 1.0, atol=1e-12)
+
+
+def test_inter_chain_correlation_rejects_invalid_period():
+    """Non-positive or non-integer `period` raises ValueError."""
+    N = 6
+    arr = np.zeros((N, N, N), dtype=int)
+    for bad_period in (0, -1, 2.5):
+        with pytest.raises(ValueError, match="period must be a positive integer"):
+            order_params.inter_chain_correlation(arr, period=bad_period)     # type: ignore[arg-type]
 
 
 def test_structure_factor_takes_sublattice_occupation():

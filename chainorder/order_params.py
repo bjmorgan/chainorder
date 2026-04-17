@@ -158,14 +158,18 @@ def along_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     return g
 
 
-def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
-    """Inter-chain correlation of the period-3 Fourier component.
+def inter_chain_correlation(
+    anion_direction: np.ndarray,
+    *,
+    period: int,
+) -> np.ndarray:
+    """Inter-chain correlation of a single Fourier component.
 
     For each chain at lateral position `(a, b)`, let `phi(a, b)` be the
-    Fourier coefficient at `k = N / 3` (i.e. the amplitude and phase of
-    period-3 ordering on that chain). This function returns the spatial
-    autocorrelation of `phi` across the chain plane, normalised so that
-    `G[0, 0] = 1`:
+    Fourier coefficient at `k = N_chain / period` (the amplitude and
+    phase of period-`period` ordering on that chain). This function
+    returns the spatial autocorrelation of `phi` across the chain
+    plane, normalised so that `G[0, 0] = 1`:
 
         G[da, db] = < phi(a, b) * conj(phi(a + da, b + db)) > / < |phi|^2 >
 
@@ -176,42 +180,49 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
 
     `|G|` ranges from `~0` (uncorrelated) to `1` (fully phase-locked);
     `arg(G)` encodes the phase pattern (`0` for uniform alignment, a
-    linear gradient for a striped arrangement, etc.).
+    linear gradient for a shifted arrangement, etc.).
 
     A phase-only inter-chain correlator (in which every chain is treated
     as equally ordered regardless of its Fourier amplitude) is a *different*
     quantity from the amplitude-weighted form returned here and cannot be
     recovered from `G` alone -- it requires per-chain phases from
-    `chain_fft(arr)[..., N // 3]`. If you need that variant, compute
-    `v = np.exp(1j * np.angle(phi))` yourself and take the spatial
-    autocorrelation of `v`.
+    `chain_fft(arr)[..., N_chain // period]`. If you need that variant,
+    compute `v = np.exp(1j * np.angle(phi))` yourself and take the
+    spatial autocorrelation of `v`.
 
     Args:
         anion_direction: Binary species array along one chain direction,
             shape `(N_lat0, N_lat1, N_chain)`. Last axis is along-chain.
+        period: Target repeat length along the chain. Keyword-only.
+            `N_chain` must be divisible by `period`.
 
     Returns:
         Complex array of shape `(N_lat0, N_lat1)`. `G[da, db]` for
         `da` in `0..N_lat0-1`, `db` in `0..N_lat1-1`.
 
     Raises:
-        ValueError: If the chain-direction length (`anion_direction.shape[-1]`)
-            is not divisible by 3 (no well-defined period-3 phase), or if
-            every chain has zero period-3 amplitude (all-O or all-F input)
-            so that the correlation is undefined.
+        ValueError: If `period` is not a positive integer, if
+            `N_chain` is not divisible by `period`, or if every chain
+            has zero amplitude at the target harmonic so that the
+            correlation is undefined.
     """
-    N = anion_direction.shape[-1]
-    if N % 3 != 0:
+    if not isinstance(period, (int, np.integer)) or period < 1:
         raise ValueError(
-            f"inter_chain_correlation requires N divisible by 3 (for period-3 "
-            f"phase), got N={N}."
+            f"period must be a positive integer, got {period!r}."
         )
-    phi = chain_fft(anion_direction)[..., N // 3]                      # (N_lat0, N_lat1)
+    N = anion_direction.shape[-1]
+    if N % period != 0:
+        raise ValueError(
+            f"inter_chain_correlation requires N_chain divisible by period, "
+            f"got N_chain={N}, period={period}."
+        )
+    phi = chain_fft(anion_direction)[..., N // period]                 # (N_lat0, N_lat1)
     power = float(np.mean(np.abs(phi) ** 2))
     if power == 0.0:
         raise ValueError(
-            "All chains have zero period-3 amplitude; correlation is "
-            "undefined. Inspect chain_fft(arr)[..., N // 3] to confirm."
+            f"All chains have zero amplitude at period={period}; correlation "
+            f"is undefined. Inspect chain_fft(arr)[..., N_chain // period] to "
+            f"confirm."
         )
 
     # Wiener-Khinchin: IFFT2(|FFT2(phi)|^2) / (N_lat0 * N_lat1) is the
