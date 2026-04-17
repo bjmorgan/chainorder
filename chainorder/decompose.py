@@ -1,4 +1,5 @@
 """Decompose on-lattice ReO3-type supercells into chain arrays."""
+from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import IntEnum
 from functools import lru_cache
@@ -80,7 +81,7 @@ class SublatticeOccupation:
         """z-chain sublattice, chain-layout shape ``(Nx, Ny, Nz)``."""
         return self.occupation[Direction.Z]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[np.ndarray]:
         """Yield the three chain-layout views in direction order."""
         yield self.x
         yield self.y
