@@ -1,7 +1,10 @@
 """Order parameters for ReO3-type anion ordering (chain-level statistics).
 
-All functions here expect the shape-``(N, N, N)`` binary integer arrays
-produced by `chainorder.decompose`.
+All functions here expect the per-direction binary integer arrays
+produced by `chainorder.decompose`, with the last axis along-chain. The
+exact shape is direction-specific (see `chainorder.decompose.ChainArrays`):
+``(Ny, Nz, Nx)`` for x, ``(Nx, Nz, Ny)`` for y, ``(Nx, Ny, Nz)`` for z.
+In the cubic case all three reduce to ``(N, N, N)``.
 """
 import numpy as np
 
@@ -10,15 +13,17 @@ def chain_fft(anion_direction: np.ndarray) -> np.ndarray:
     """Discrete Fourier transform along each chain.
 
     Args:
-        anion_direction: Binary species array along one chain direction (from
-            `decompose()`), shape (N, N, N).
+        anion_direction: Binary species array for a single chain direction
+            (from `decompose()`), shape `(N_lat0, N_lat1, N_chain)`. Last
+            axis is along-chain.
 
     Returns:
-        Complex array of shape (N, N, N). Last axis is the Fourier index
-        k = 0, 1, ..., N-1. Computed as `np.fft.fft(arr, axis=-1) / N`.
-        For a chain that is strictly periodic with period `p` (N divisible
-        by `p`, exactly one flagged atom per period), the DC component and
-        the peak at `k = N // p` each have magnitude `1 / p`.
+        Complex array of the same shape as `anion_direction`. Last axis
+        is the Fourier index `k = 0, 1, ..., N_chain - 1`. Computed as
+        `np.fft.fft(arr, axis=-1) / N_chain`. For a chain that is strictly
+        periodic with period `p` (`N_chain` divisible by `p`, exactly one
+        flagged atom per period), the DC component and the peak at
+        `k = N_chain // p` each have magnitude `1 / p`.
     """
     N = anion_direction.shape[-1]
     return np.fft.fft(anion_direction, axis=-1) / N
@@ -31,17 +36,17 @@ def motif_counts(
     """Count cyclic-equivalence classes of length-`window_length` motifs per chain.
 
     Windows wrap periodically: every chain position is the start of exactly one
-    window, so counts per chain sum to N regardless of `window_length`.
+    window, so counts per chain sum to `N_chain` regardless of `window_length`.
 
     Args:
-        anion_direction: Binary species array along one chain direction,
-            shape (N, N, N).
+        anion_direction: Binary species array for a single chain direction,
+            shape `(N_lat0, N_lat1, N_chain)`. Last axis is along-chain.
         window_length: Length of the sliding window. Must satisfy
-            ``1 <= window_length <= min(N, 62)`` (see `Raises`).
+            ``1 <= window_length <= min(N_chain, 62)`` (see `Raises`).
 
     Returns:
-        Dictionary mapping each canonical motif tuple to an integer array of
-        shape (N, N) giving per-chain counts.
+        Dictionary mapping each canonical motif tuple to an integer array
+        of shape `(N_lat0, N_lat1)` giving per-chain counts.
 
     Raises:
         TypeError: If `window_length` is not an integer, or if
@@ -49,7 +54,7 @@ def motif_counts(
             truncate through the bit-packing cast).
         ValueError: If `window_length` is outside the valid range. The upper
             bound of 62 is a hard limit of the int64 bit-packing used for
-            the canonicalisation table; the upper bound of N is geometric
+            the canonicalisation table; the upper bound of `N_chain` is geometric
             (larger windows would wrap around the chain and alias).
 
     Notes:
@@ -89,15 +94,15 @@ def motif_counts(
             f"This limit is well above any realistic chain length."
         )
 
-    # Build (N, w) index array: windows[start, offset] -> position in chain.
-    window_idx = (np.arange(N)[:, None] + np.arange(w)[None, :]) % N   # (N, w)
+    # Build (N_chain, w) index array: windows[start, offset] -> position in chain.
+    window_idx = (np.arange(N)[:, None] + np.arange(w)[None, :]) % N   # (N_chain, w)
 
-    # windows[j, k, start, offset] = anion_direction[j, k, (start + offset) % N]
-    windows = anion_direction[:, :, window_idx]                        # (N, N, N, w)
+    # windows[j, k, start, offset] = anion_direction[j, k, (start + offset) % N_chain]
+    windows = anion_direction[:, :, window_idx]                        # (N_lat0, N_lat1, N_chain, w)
 
     # Encode each window as an integer: bit i = value at offset i.
     powers = (1 << np.arange(w)).astype(np.int64)                      # (w,)
-    encoded = (windows.astype(np.int64) * powers).sum(axis=-1)         # (N, N, N)
+    encoded = (windows.astype(np.int64) * powers).sum(axis=-1)         # (N_lat0, N_lat1, N_chain)
 
     # Precompute canonical code for every possible window value.
     n_codes = 1 << w
@@ -110,7 +115,7 @@ def motif_counts(
         canon_code[code] = best_code
         canon_tuple[best_code] = best
 
-    canonical_encoded = canon_code[encoded]                            # (N, N, N)
+    canonical_encoded = canon_code[encoded]                            # (N_lat0, N_lat1, N_chain)
 
     # Tally occurrences per chain (sum over the last axis, which is `start`).
     counts: dict[tuple[int, ...], np.ndarray] = {}
@@ -130,22 +135,22 @@ def along_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     Wrap-around is periodic.
 
     Args:
-        anion_direction: Binary species array along one chain direction,
-            shape (N, N, N).
+        anion_direction: Binary species array for a single chain direction,
+            shape `(N_lat0, N_lat1, N_chain)`. Last axis is along-chain.
 
     Returns:
-        g(r) for r = 0, 1, ..., N-1, shape (N,).
+        g(r) for `r = 0, 1, ..., N_chain - 1`, shape `(N_chain,)`.
     """
     N = anion_direction.shape[-1]
     s_mean = float(anion_direction.mean())
 
-    # Wiener-Khinchin: g(r) = IFFT(|FFT(s)|^2) / N, averaged over chains,
+    # Wiener-Khinchin: g(r) = IFFT(|FFT(s)|^2) / N_chain, averaged over chains,
     # minus the mean-density contribution. O(N^3 log N) instead of the O(N^4)
     # broadcast-indexed stack of r-shifted copies.
-    fft_per_chain = np.fft.fft(anion_direction, axis=-1)               # (N, N, N)
-    power = np.abs(fft_per_chain) ** 2                                 # (N, N, N)
-    autocorr = np.fft.ifft(power, axis=-1).real / N                    # (N, N, N)
-    g = autocorr.mean(axis=(0, 1)) - s_mean ** 2                       # (N,)
+    fft_per_chain = np.fft.fft(anion_direction, axis=-1)               # (N_lat0, N_lat1, N_chain)
+    power = np.abs(fft_per_chain) ** 2                                 # (N_lat0, N_lat1, N_chain)
+    autocorr = np.fft.ifft(power, axis=-1).real / N                    # (N_lat0, N_lat1, N_chain)
+    g = autocorr.mean(axis=(0, 1)) - s_mean ** 2                       # (N_chain,)
     return g
 
 
@@ -179,15 +184,17 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
 
     Args:
         anion_direction: Binary species array along one chain direction,
-            shape (N, N, N).
+            shape `(N_lat0, N_lat1, N_chain)`. Last axis is along-chain.
 
     Returns:
-        Complex array of shape (N, N). `G[da, db]` for da, db = 0..N-1.
+        Complex array of shape `(N_lat0, N_lat1)`. `G[da, db]` for
+        `da` in `0..N_lat0-1`, `db` in `0..N_lat1-1`.
 
     Raises:
-        ValueError: If N is not divisible by 3 (no well-defined period-3
-            phase), or if every chain has zero period-3 amplitude
-            (all-O or all-F input) so that the correlation is undefined.
+        ValueError: If the chain-direction length (`anion_direction.shape[-1]`)
+            is not divisible by 3 (no well-defined period-3 phase), or if
+            every chain has zero period-3 amplitude (all-O or all-F input)
+            so that the correlation is undefined.
     """
     N = anion_direction.shape[-1]
     if N % 3 != 0:
@@ -195,7 +202,7 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
             f"inter_chain_correlation requires N divisible by 3 (for period-3 "
             f"phase), got N={N}."
         )
-    phi = chain_fft(anion_direction)[..., N // 3]                      # (N, N)
+    phi = chain_fft(anion_direction)[..., N // 3]                      # (N_lat0, N_lat1)
     power = float(np.mean(np.abs(phi) ** 2))
     if power == 0.0:
         raise ValueError(
@@ -203,12 +210,12 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
             "undefined. Inspect chain_fft(arr)[..., N // 3] to confirm."
         )
 
-    # Wiener-Khinchin: IFFT2(|FFT2(phi)|^2) / N^2 is the spatial
-    # autocorrelation < phi(a, b) * conj(phi(a - da, b - db)) >. The direct
-    # form uses the opposite lag sign, so take the complex conjugate to
-    # match < phi(a, b) * conj(phi(a + da, b + db)) >.
-    phi_k = np.fft.fft2(phi)                                           # (N, N)
-    numer = np.conj(np.fft.ifft2(np.abs(phi_k) ** 2)) / N ** 2         # (N, N)
+    # Wiener-Khinchin: IFFT2(|FFT2(phi)|^2) / (N_lat0 * N_lat1) is the
+    # spatial autocorrelation < phi(a, b) * conj(phi(a - da, b - db)) >.
+    # The direct form uses the opposite lag sign, so take the complex
+    # conjugate to match < phi(a, b) * conj(phi(a + da, b + db)) >.
+    phi_k = np.fft.fft2(phi)                                           # (N_lat0, N_lat1)
+    numer = np.conj(np.fft.ifft2(np.abs(phi_k) ** 2)) / phi.size       # (N_lat0, N_lat1)
     return numer / power
 
 
@@ -232,21 +239,21 @@ def structure_factor(
     matching reciprocal axis.
 
     Args:
-        anion_x: x-chain occupation, shape `(N, N, N)`. Axes are
+        anion_x: x-chain occupation, shape `(Ny, Nz, Nx)`. Axes are
             `(j, k, i)`: real-space lateral positions `(j, k)` in the
             `(y, z)` plane, position `i` along the x chain.
-        anion_y: y-chain occupation, shape `(N, N, N)`. Axes are
+        anion_y: y-chain occupation, shape `(Nx, Nz, Ny)`. Axes are
             `(i, k, j)`: lateral positions `(i, k)` in the `(x, z)` plane,
             position `j` along the y chain.
-        anion_z: z-chain occupation, shape `(N, N, N)`. Axes are
+        anion_z: z-chain occupation, shape `(Nx, Ny, Nz)`. Axes are
             `(i, j, k)`: lateral positions `(i, j)` in the `(x, y)` plane,
             position `k` along the z chain.
 
     Returns:
-        Complex array of shape `(N, N, N)` with axes `(kx, ky, kz)`.
+        Complex array of shape `(Nx, Ny, Nz)` with axes `(kx, ky, kz)`.
         `|F|**2` is proportional to the kinematic diffuse scattering
-        intensity at wavevector `(kx, ky, kz) / N` reciprocal lattice
-        units. Normalised so that a fully F-occupied anion sublattice
+        intensity at wavevector `(kx / Nx, ky / Ny, kz / Nz)` in
+        reciprocal lattice units. Normalised so that a fully F-occupied anion sublattice
         gives `F[0, 0, 0] = 3` (three F per unit cell) and a single-
         sublattice period-3 ordering gives `|F| = 1/3` at its peak.
 
@@ -256,25 +263,45 @@ def structure_factor(
         np.zeros_like(ax))` returns the x-sublattice contribution alone.
         For per-chain (not cross-chain) analysis use `chain_fft` instead.
     """
-    if anion_x.shape != anion_y.shape or anion_x.shape != anion_z.shape:
+    # Derive (Nx, Ny, Nz) from the three per-direction input shapes.
+    # anion_x axes (j, k, i) -> (Ny, Nz, Nx)
+    # anion_y axes (i, k, j) -> (Nx, Nz, Ny)
+    # anion_z axes (i, j, k) -> (Nx, Ny, Nz)
+    if anion_x.ndim != 3 or anion_y.ndim != 3 or anion_z.ndim != 3:
         raise ValueError(
-            f"All three sublattice arrays must have the same shape; got "
+            f"All three sublattice arrays must be 3-D; got shapes "
             f"{anion_x.shape}, {anion_y.shape}, {anion_z.shape}."
         )
-    N = anion_x.shape[-1]
-    k = np.arange(N)
+    Ny_x, Nz_x, Nx_x = anion_x.shape
+    Nx_y, Nz_y, Ny_y = anion_y.shape
+    Nx_z, Ny_z, Nz_z = anion_z.shape
+    if (
+        Nx_x != Nx_y or Nx_x != Nx_z
+        or Ny_x != Ny_y or Ny_x != Ny_z
+        or Nz_x != Nz_y or Nz_x != Nz_z
+    ):
+        raise ValueError(
+            f"Sublattice arrays have inconsistent per-direction shapes: "
+            f"x={anion_x.shape} (expects (Ny, Nz, Nx)), "
+            f"y={anion_y.shape} (expects (Nx, Nz, Ny)), "
+            f"z={anion_z.shape} (expects (Nx, Ny, Nz))."
+        )
+    Nx, Ny, Nz = Nx_x, Ny_x, Nz_x
 
     # FFT each sublattice and transpose to canonical (kx, ky, kz).
-    # anion_x axes are (j, k, i) = (y, z, x); FFT output axes (ky, kz, kx).
-    # anion_y axes are (i, k, j) = (x, z, y); FFT output axes (kx, kz, ky).
-    # anion_z axes are (i, j, k) = (x, y, z); already canonical.
+    # anion_x axes (ky, kz, kx) -> (kx, ky, kz)
+    # anion_y axes (kx, kz, ky) -> (kx, ky, kz)
+    # anion_z axes (kx, ky, kz) already canonical
     f_x = np.fft.fftn(anion_x).transpose(2, 0, 1)
     f_y = np.fft.fftn(anion_y).transpose(0, 2, 1)
     f_z = np.fft.fftn(anion_z)
 
     # Half-unit-cell spatial offset of each sublattice along its own axis.
-    phase_x = np.exp(-1j * np.pi * k[:, None, None] / N)
-    phase_y = np.exp(-1j * np.pi * k[None, :, None] / N)
-    phase_z = np.exp(-1j * np.pi * k[None, None, :] / N)
+    kx = np.arange(Nx)
+    ky = np.arange(Ny)
+    kz = np.arange(Nz)
+    phase_x = np.exp(-1j * np.pi * kx[:, None, None] / Nx)
+    phase_y = np.exp(-1j * np.pi * ky[None, :, None] / Ny)
+    phase_z = np.exp(-1j * np.pi * kz[None, None, :] / Nz)
 
-    return (f_x * phase_x + f_y * phase_y + f_z * phase_z) / N ** 3
+    return (f_x * phase_x + f_y * phase_y + f_z * phase_z) / (Nx * Ny * Nz)
