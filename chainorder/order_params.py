@@ -202,7 +202,7 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
             f"inter_chain_correlation requires N divisible by 3 (for period-3 "
             f"phase), got N={N}."
         )
-    phi = chain_fft(anion_direction)[..., N // 3]                      # (Nx, Ny)
+    phi = chain_fft(anion_direction)[..., N // 3]                      # (N_lat0, N_lat1)
     power = float(np.mean(np.abs(phi) ** 2))
     if power == 0.0:
         raise ValueError(
@@ -210,12 +210,12 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
             "undefined. Inspect chain_fft(arr)[..., N // 3] to confirm."
         )
 
-    # Wiener-Khinchin: IFFT2(|FFT2(phi)|^2) / (Nx*Ny) is the spatial
-    # autocorrelation < phi(a, b) * conj(phi(a - da, b - db)) >. The direct
-    # form uses the opposite lag sign, so take the complex conjugate to
-    # match < phi(a, b) * conj(phi(a + da, b + db)) >.
-    phi_k = np.fft.fft2(phi)                                           # (Nx, Ny)
-    numer = np.conj(np.fft.ifft2(np.abs(phi_k) ** 2)) / phi.size       # (Nx, Ny)
+    # Wiener-Khinchin: IFFT2(|FFT2(phi)|^2) / (N_lat0 * N_lat1) is the
+    # spatial autocorrelation < phi(a, b) * conj(phi(a - da, b - db)) >.
+    # The direct form uses the opposite lag sign, so take the complex
+    # conjugate to match < phi(a, b) * conj(phi(a + da, b + db)) >.
+    phi_k = np.fft.fft2(phi)                                           # (N_lat0, N_lat1)
+    numer = np.conj(np.fft.ifft2(np.abs(phi_k) ** 2)) / phi.size       # (N_lat0, N_lat1)
     return numer / power
 
 
