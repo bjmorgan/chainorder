@@ -10,9 +10,6 @@ from tests._fixtures import (
 )
 
 
-ROT_SHAPES: list[tuple[int, int, int]] = [(3, 3, 3), (6, 6, 6), (4, 4, 6)]
-# Nx == Ny; used by the 90-deg-about-z rotation-equivariance test.
-
 CUBIC_SHAPES: list[tuple[int, int, int]] = [(3, 3, 3), (6, 6, 6)]
 # Cubic; used by tests that physically require equal axes.
 
@@ -23,13 +20,14 @@ ICC_ROT_SHAPES: list[tuple[int, int, int]] = [(3, 3, 3), (6, 6, 6), (3, 4, 6)]
 # Nx divisible by 3 (required by rotating_phase analytical identity);
 # lateral non-cubic in the (3, 4, 6) case.
 
+OFOF_SHAPES: list[tuple[int, int, int]] = [(3, 3, 4), (6, 6, 6), (2, 4, 6)]
+# Nz even; used by period-2 (OFOF) tests along the chain direction.
 
-@pytest.mark.parametrize("shape", SHAPES)
+
+@pytest.mark.parametrize("shape", ICC_SHAPES)
 def test_chain_fft_perfect_oof_peaks_at_period_3(shape):
     """Perfect OOF chain (Nz divisible by 3): |phi| = 1/3 at k = Nz/3."""
     Nx, Ny, Nz = shape
-    if Nz % 3 != 0:
-        pytest.skip(f"Nz={Nz} not divisible by 3")
     arr = perfect_oof_chain(shape, phase=2, direction="z")
     fft = order_params.chain_fft(arr)
     assert fft.shape == (Nx, Ny, Nz)
@@ -38,14 +36,14 @@ def test_chain_fft_perfect_oof_peaks_at_period_3(shape):
     np.testing.assert_allclose(np.abs(fft[..., k]), 1.0 / 3.0, atol=1e-12)
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", [s for s in ICC_SHAPES if s[2] > 3])
 def test_chain_fft_perfect_oof_other_components_zero(shape):
-    """Non-period-3 Fourier components should be zero (except DC)."""
+    """Non-period-3 Fourier components should be zero (except DC).
+
+    Nz=3 is excluded: the OFOF index Nz//2 coincides with the OOF peak
+    at Nz//3, so the pattern has no distinct OFOF bin to probe.
+    """
     Nx, Ny, Nz = shape
-    if Nz % 3 != 0:
-        pytest.skip(f"Nz={Nz} not divisible by 3")
-    if Nz // 2 == Nz // 3:
-        pytest.skip(f"Nz={Nz}: Nz//2 coincides with the OOF peak at Nz//3")
     arr = perfect_oof_chain(shape, phase=2, direction="z")
     fft = order_params.chain_fft(arr)
     # DC component (k=0) is the mean = 1/3
@@ -55,12 +53,10 @@ def test_chain_fft_perfect_oof_other_components_zero(shape):
     np.testing.assert_allclose(fft[..., Nz // 2], 0, atol=1e-12)
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", OFOF_SHAPES)
 def test_chain_fft_perfect_ofof_peaks_at_period_2(shape):
     """Perfect OFOF chain (Nz even): |phi| peaks at k = Nz/2."""
     Nx, Ny, Nz = shape
-    if Nz % 2 != 0:
-        pytest.skip(f"Nz={Nz} not even")
     arr = perfect_ofof_chain(shape, direction="z")
     fft = order_params.chain_fft(arr)
     k = Nz // 2
@@ -107,13 +103,11 @@ def test_chain_fft_normalisation_period_3_in_N_9():
     np.testing.assert_allclose(np.abs(fft[..., N // p]), 1.0 / p, atol=1e-12)
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", ICC_SHAPES)
 def test_motif_counts_perfect_oof_window_3(shape):
     """Perfect OOF chain: all length-3 windows are cyclic class (0, 0, 1),
     total Nz per chain."""
     Nx, Ny, Nz = shape
-    if Nz % 3 != 0:
-        pytest.skip(f"Nz={Nz} not divisible by 3")
     arr = perfect_oof_chain(shape, phase=2, direction="z")
     counts = order_params.motif_counts(arr, window_length=3)
     # One F in every triplet -> canonical (0, 0, 1)
@@ -124,12 +118,10 @@ def test_motif_counts_perfect_oof_window_3(shape):
         assert cls not in counts or np.all(counts[cls] == 0)
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", OFOF_SHAPES)
 def test_motif_counts_perfect_ofof_window_2(shape):
     """Perfect OFOF chain: all length-2 windows are (0, 1); total Nz per chain."""
     Nx, Ny, Nz = shape
-    if Nz % 2 != 0:
-        pytest.skip(f"Nz={Nz} not even")
     arr = perfect_ofof_chain(shape, direction="z")
     counts = order_params.motif_counts(arr, window_length=2)
     assert (0, 1) in counts
@@ -173,12 +165,10 @@ def test_motif_counts_cyclic_rotations_collapse():
     assert counts[(0, 0, 1)][0, 2] == N
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", ICC_SHAPES)
 def test_motif_counts_window_length_1_is_single_site(shape):
     """window_length=1 counts single-site species; (0,) + (1,) sum to Nz per chain."""
     Nx, Ny, Nz = shape
-    if Nz % 3 != 0:
-        pytest.skip(f"Nz={Nz} not divisible by 3")
     arr = perfect_oof_chain(shape, phase=2, direction="z")   # 1/3 of sites are F
     counts = order_params.motif_counts(arr, window_length=1)
     # (0,) is 2Nz/3 per chain, (1,) is Nz/3 per chain; they cover all Nz windows.
@@ -187,12 +177,10 @@ def test_motif_counts_window_length_1_is_single_site(shape):
     np.testing.assert_array_equal(counts[(1,)], np.full((Nx, Ny), Nz // 3))
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", ICC_SHAPES)
 def test_motif_counts_window_length_equal_N_is_full_chain(shape):
     """window_length == Nz: every rotation of the chain is in the same class."""
     Nx, Ny, Nz = shape
-    if Nz % 3 != 0:
-        pytest.skip(f"Nz={Nz} not divisible by 3")
     arr = perfect_oof_chain(shape, phase=2, direction="z")   # chain [0,0,1,...]
     counts = order_params.motif_counts(arr, window_length=Nz)
     # All Nz sliding windows rotate through the same Nz-tuple cyclically, so
@@ -246,12 +234,10 @@ def test_motif_counts_per_chain_distinct_for_mixed_patterns():
     np.testing.assert_array_equal(counts[(0, 1, 1)][3:, :], N // 2)
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", ICC_SHAPES)
 def test_along_chain_correlation_perfect_oof(shape):
     """Perfect OOF: g(0) = 2/9, g(3) = 2/9 (peaks), g(1) = g(2) = -1/9 (troughs)."""
     Nx, Ny, Nz = shape
-    if Nz % 3 != 0:
-        pytest.skip(f"Nz={Nz} not divisible by 3")
     arr = perfect_oof_chain(shape, phase=2, direction="z")
     g = order_params.along_chain_correlation(arr)
     assert g.shape == (Nz,)
@@ -272,12 +258,10 @@ def test_along_chain_correlation_all_zero(shape):
     np.testing.assert_allclose(g, 0, atol=1e-12)
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", OFOF_SHAPES)
 def test_along_chain_correlation_perfect_ofof(shape):
     """Perfect OFOF (mean 1/2): g(0) = g(2) = 1/4, g(1) = g(3) = -1/4."""
     Nx, Ny, Nz = shape
-    if Nz % 2 != 0:
-        pytest.skip(f"Nz={Nz} not even")
     arr = perfect_ofof_chain(shape, direction="z")
     g = order_params.along_chain_correlation(arr)
     # <s_i s_{i+0}> = <s^2> = <s> = 1/2 (binary). 1/2 - (1/2)^2 = 1/4.
@@ -411,12 +395,10 @@ def test_structure_factor_takes_sublattice_occupation():
     np.testing.assert_allclose(np.abs(F[Nx // 3, 0, 0]), 1.0 / 3.0, atol=1e-12)
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", ICC_ROT_SHAPES)
 def test_structure_factor_x_only_peaks_on_kx_axis(shape):
-    """x-chains OOF (when Nx divisible by 3), y/z empty: peaks on kx axis."""
+    """x-chains OOF (Nx divisible by 3), y/z empty: peaks on kx axis."""
     Nx, Ny, Nz = shape
-    if Nx % 3 != 0:
-        pytest.skip(f"Nx={Nx} not divisible by 3")
     ax = perfect_oof_chain(shape, phase=2, direction="x")
     occ = occupation_from_chain_arrays(shape, x=ax)
 
@@ -447,13 +429,17 @@ def test_structure_factor_orthorhombic_x_only_normalisation():
     np.testing.assert_allclose(np.abs(F[0, 0, 0]), 1.0 / 3.0, atol=1e-12)
 
 
-@pytest.mark.parametrize("shape", ROT_SHAPES)
+@pytest.mark.parametrize("shape", CUBIC_SHAPES)
 def test_structure_factor_rotation_equivariance_about_z(shape):
-    """Rotating the structure 90 deg about z moves peaks from kx to ky (Nx == Ny)."""
+    """Rotating the structure 90 deg about z moves peaks from kx to ky (Nx == Ny).
+
+    Parametrised over CUBIC_SHAPES: every cubic shape in the test suite
+    satisfies the two preconditions (Nx == Ny and Nx divisible by 3)
+    without introducing a new shape list. The rotation property itself
+    only requires Nx == Ny.
+    """
     Nx, Ny, Nz = shape
-    assert Nx == Ny, f"ROT_SHAPES must have Nx == Ny, got {shape}"
-    if Nx % 3 != 0:
-        pytest.skip(f"Nx={Nx} not divisible by 3")
+    assert Nx == Ny, f"CUBIC_SHAPES must have Nx == Ny, got {shape}"
     ordered_x = perfect_oof_chain(shape, phase=2, direction="x")
     ordered_y = perfect_oof_chain(shape, phase=2, direction="y")
 
@@ -480,8 +466,6 @@ def test_structure_factor_all_directions_ordered_has_cubic_symmetry(shape):
     """All three sublattices OOF, same phase: peaks on all three Cartesian axes."""
     Nx, Ny, Nz = shape
     assert Nx == Ny == Nz, f"CUBIC_SHAPES must be cubic, got {shape}"
-    if Nx % 3 != 0:
-        pytest.skip(f"Nx={Nx} not divisible by 3")
     ax = perfect_oof_chain(shape, phase=2, direction="x")
     ay = perfect_oof_chain(shape, phase=2, direction="y")
     az = perfect_oof_chain(shape, phase=2, direction="z")
