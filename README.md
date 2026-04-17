@@ -85,7 +85,8 @@ edge cases in detail.
 
 ## Related material
 
-- `docs/concepts.md` -- what each order parameter measures and when to
-  reach for it (forthcoming).
-- `docs/tutorial.ipynb` -- end-to-end worked example on a synthetic
-  ordered structure (forthcoming).
+- [`docs/concepts.md`](docs/concepts.md) -- problem framing, data model,
+  and what each order parameter measures, with concrete example cases.
+- [`docs/tutorial.ipynb`](docs/tutorial.ipynb) -- end-to-end worked
+  example applying all five order parameters to four reference
+  structures, with plots.
