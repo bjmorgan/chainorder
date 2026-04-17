@@ -1,7 +1,7 @@
 """Decompose on-lattice ReO3-type supercells into chain arrays."""
+from dataclasses import dataclass
 from enum import IntEnum
 from functools import lru_cache
-from typing import NamedTuple
 
 import numpy as np
 from ase import Atoms
@@ -23,102 +23,135 @@ class Direction(IntEnum):
     Z = 2
 
 
-class ChainArrays(NamedTuple):
-    """Three per-direction anion occupation arrays from a ReO3-type supercell.
+@dataclass(frozen=True)
+class SublatticeOccupation:
+    """Anion sublattice occupation of a ReO3-type supercell.
 
-    Each field is an ``int64`` array with values in ``{0, 1}``, with
-    shape specific to its direction -- ``(Ny, Nz, Nx)`` for ``x``,
-    ``(Nx, Nz, Ny)`` for ``y``, ``(Nx, Ny, Nz)`` for ``z``. In the cubic
-    case ``Nx == Ny == Nz == N`` these all reduce to ``(N, N, N)``. Values
-    are ``1`` at sites whose species matches the `species` argument passed
-    to `decompose`, ``0`` elsewhere. The last axis is always
-    along-chain; the first two indices identify the chain's lateral
-    position in the sublattice:
+    The primary field `occupation` has shape ``(3, Nx, Ny, Nz)`` with
+    axes ``(direction, i, j, k)``: layer ``direction`` holds the species
+    flag (``1`` for `species`, ``0`` otherwise) of the anion at edge
+    midpoint ``(i, j, k) + 1/2 e_direction``. The `Direction` IntEnum
+    names the three layers (``X``, ``Y``, ``Z``).
 
-    - ``x[j, k, i]``: x-chain at lateral position ``(j, k)``, site ``i`` along x.
-    - ``y[i, k, j]``: y-chain at lateral position ``(i, k)``, site ``j`` along y.
-    - ``z[i, j, k]``: z-chain at lateral position ``(i, j)``, site ``k`` along z.
+    Chain-layout per-direction views (`.x`, `.y`, `.z`) are O(1)
+    `transpose` views of `occupation` with the last axis brought to the
+    along-chain position -- the shape convention the single-direction
+    tools in `order_params` (``chain_fft``, ``motif_counts``,
+    ``along_chain_correlation``, ``inter_chain_correlation``) expect:
 
-    Supports positional unpacking (``ax, ay, az = decompose(...)``) as well
-    as attribute access (``result.x``). Prefer attribute access when the
-    direction matters to downstream logic: a transposed *unpacking*
-    (``az, ay, ax = decompose(...)``) would silently swap the x and z
-    chains and produce a mathematically-consistent but physically wrong
-    answer. Attribute access is not a runtime guarantee against passing
-    the wrong field to a downstream function -- that is still the
-    caller's responsibility -- but it makes the name a checkable at the
-    call site.
+    - ``x``: shape ``(Ny, Nz, Nx)``; ``x[j, k, i]`` is the x-chain at
+      lateral position ``(j, k)`` in the ``(y, z)`` plane, site ``i``
+      along x.
+    - ``y``: shape ``(Nx, Nz, Ny)``; ``y[i, k, j]`` is the y-chain at
+      lateral position ``(i, k)``, site ``j`` along y.
+    - ``z``: shape ``(Nx, Ny, Nz)``; ``z[i, j, k]`` is the z-chain at
+      lateral position ``(i, j)``, site ``k`` along z.
+
+    For 3D operations (``structure_factor``) pass the `SublatticeOccupation`
+    instance directly -- the 3D form is the primary representation and
+    passing it whole avoids the chain-layout-and-back transpose round
+    trip the old positional-array API imposed. For a cubic supercell
+    all three chain-layout views reduce to the common shape ``(N, N, N)``.
+
+    Supports positional unpacking (``ax, ay, az = SublatticeOccupation.from_atoms(...)``)
+    via ``__iter__``, which yields ``(x, y, z)`` in direction order. A
+    transposed unpacking (``az, ay, ax = ...``) would silently swap the
+    x and z chain-layout arrays and produce a physically wrong
+    downstream answer; prefer attribute access (``result.x``) where
+    direction matters. Passing the whole ``SublatticeOccupation`` to
+    3D-operation functions (``structure_factor``) removes this hazard
+    at those call sites.
     """
 
-    x: np.ndarray
-    y: np.ndarray
-    z: np.ndarray
+    occupation: np.ndarray
 
+    @property
+    def x(self) -> np.ndarray:
+        """x-chain sublattice, chain-layout shape ``(Ny, Nz, Nx)``."""
+        return self.occupation[Direction.X].transpose(1, 2, 0)
 
-def decompose(
-    atoms: Atoms,
-    N: int | tuple[int, int, int],
-    origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    species: str = "F",
-) -> ChainArrays:
-    """Decompose an on-lattice ReO3-type supercell into three chain arrays.
+    @property
+    def y(self) -> np.ndarray:
+        """y-chain sublattice, chain-layout shape ``(Nx, Nz, Ny)``."""
+        return self.occupation[Direction.Y].transpose(0, 2, 1)
 
-    Identifies each anion from its fractional coordinates (half-integer in
-    exactly one axis, integer in the other two) and assigns it to a slot in
-    one of three per-direction arrays -- shape `(Ny, Nz, Nx)` for x, `(Nx,
-    Nz, Ny)` for y, `(Nx, Ny, Nz)` for z. The assignment is cached across
-    calls with identical `(positions, cell, shape, origin)`, so re-analysing
-    the same frame (e.g. with a different `species`) is free after the
-    first call, and analysing an MC trajectory of occupation swaps -- where
-    atom positions are identical frame-to-frame -- pays the decomposition
-    cost only once. Off-lattice MD trajectories (positions perturbed
-    thermally) are out of scope; they would not pass the on-lattice check
-    anyway.
+    @property
+    def z(self) -> np.ndarray:
+        """z-chain sublattice, chain-layout shape ``(Nx, Ny, Nz)``."""
+        return self.occupation[Direction.Z]
 
-    Args:
-        atoms: On-lattice ASE `Atoms` supercell with anions at ideal edge
-            midpoints of a simple-cubic cation sublattice.
-        N: Supercell size. Scalar (cubic shorthand for `(N, N, N)`) or a
-            3-tuple `(Nx, Ny, Nz)` of positive integers. The cell diagonal
-            must match along each axis.
-        origin: Fractional offset of the cation sub-lattice within each
-            unit cell. Anions are assumed to sit at (cation position + 1/2)
-            along one axis. Default `(0.0, 0.0, 0.0)` places cations at
-            unit-cell corners and anions at edge midpoints;
-            `(0.5, 0.5, 0.5)` corresponds to body-centred cations. Each
-            component must lie in `[0.0, 1.0)`; values outside this range
-            raise.
-        species: Element symbol to flag as 1 in the output arrays. Default
-            `"F"`; all other anion species are flagged 0.
+    def __iter__(self):
+        """Yield the three chain-layout views in direction order."""
+        yield self.x
+        yield self.y
+        yield self.z
 
-    Returns:
-        A `ChainArrays` namedtuple with fields `x`, `y`, `z`, each an
-        integer array with direction-specific shape: `x` is `(Ny, Nz, Nx)`,
-        `y` is `(Nx, Nz, Ny)`, `z` is `(Nx, Ny, Nz)`. For each array the
-        first two indices identify the chain and the last index is
-        position along the chain. In the cubic case `Nx == Ny == Nz == N`
-        all three reduce to `(N, N, N)`. Supports positional unpacking.
+    @classmethod
+    def from_atoms(
+        cls,
+        atoms: Atoms,
+        N: int | tuple[int, int, int],
+        origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        species: str = "F",
+    ) -> "SublatticeOccupation":
+        """Decompose an on-lattice ReO3-type supercell into a sublattice occupation.
 
-    Raises:
-        ValueError: On any of the validation failures below -- invalid `N`
-            (non-integer scalar, non-positive scalar, tuple of wrong
-            length, non-integer tuple element, or non-positive tuple
-            element); `origin` component outside `[0.0, 1.0)`; cell
-            containing non-finite values, not orthorhombic, or
-            non-positive on the diagonal; wrong cation or anion count
-            for the given shape; any atom off-lattice (including the
-            common case of passing the wrong `origin` -- e.g.
-            `(0.0, 0.0, 0.0)` on a body-centred structure); `species`
-            absent from all anion sites; or a slot collision during
-            assignment.
-    """
-    shape = _validate_shape(N)
-    origin = _validate_origin(origin)
-    positions = np.ascontiguousarray(atoms.positions, dtype=np.float64)
-    cell = np.ascontiguousarray(atoms.cell.array, dtype=np.float64)
-    indices = _indices_cached(positions.tobytes(), cell.tobytes(), shape, origin)
-    symbols = np.array(atoms.get_chemical_symbols())
-    return _apply_indices(symbols, indices, species)
+        Identifies each anion from its fractional coordinates (half-integer in
+        exactly one axis, integer in the other two) and assigns it to a slot in
+        a 3D sublattice occupation array of shape (3, Nx, Ny, Nz) -- axis 0
+        indexes the three edge-midpoint sublattices, axes 1-3 the xyz grid.
+        The assignment is cached across calls with identical
+        `(positions, cell, shape, origin)`, so re-analysing the same frame
+        (e.g. with a different `species`) is free after the first call, and
+        analysing an MC trajectory of occupation swaps -- where atom positions
+        are identical frame-to-frame -- pays the decomposition cost only once.
+        Off-lattice MD trajectories (positions perturbed thermally) are out of
+        scope; they would not pass the on-lattice check anyway.
+
+        Args:
+            atoms: On-lattice ASE `Atoms` supercell with anions at ideal edge
+                midpoints of a simple-cubic cation sublattice.
+            N: Supercell size. Scalar (cubic shorthand for `(N, N, N)`) or a
+                3-tuple `(Nx, Ny, Nz)` of positive integers. The cell diagonal
+                must match along each axis.
+            origin: Fractional offset of the cation sub-lattice within each
+                unit cell. Anions are assumed to sit at (cation position + 1/2)
+                along one axis. Default `(0.0, 0.0, 0.0)` places cations at
+                unit-cell corners and anions at edge midpoints;
+                `(0.5, 0.5, 0.5)` corresponds to body-centred cations. Each
+                component must lie in `[0.0, 1.0)`; values outside this range
+                raise.
+            species: Element symbol to flag as 1 in the output arrays. Default
+                `"F"`; all other anion species are flagged 0.
+
+        Returns:
+            A SublatticeOccupation whose primary field .occupation has shape
+            (3, Nx, Ny, Nz) with axes (direction, i, j, k). The .x, .y, .z
+            properties expose chain-layout transpose views (shapes
+            (Ny, Nz, Nx), (Nx, Nz, Ny), (Nx, Ny, Nz) respectively; reducing
+            to (N, N, N) in the cubic case). Positional unpacking yields the
+            three chain-layout views in direction order.
+
+        Raises:
+            ValueError: On any of the validation failures below -- invalid `N`
+                (non-integer scalar, non-positive scalar, tuple of wrong
+                length, non-integer tuple element, or non-positive tuple
+                element); `origin` component outside `[0.0, 1.0)`; cell
+                containing non-finite values, not orthorhombic, or
+                non-positive on the diagonal; wrong cation or anion count
+                for the given shape; any atom off-lattice (including the
+                common case of passing the wrong `origin` -- e.g.
+                `(0.0, 0.0, 0.0)` on a body-centred structure); `species`
+                absent from all anion sites; or a slot collision during
+                assignment.
+        """
+        shape = _validate_shape(N)
+        origin = _validate_origin(origin)
+        positions = np.ascontiguousarray(atoms.positions, dtype=np.float64)
+        cell = np.ascontiguousarray(atoms.cell.array, dtype=np.float64)
+        indices = _indices_cached(positions.tobytes(), cell.tobytes(), shape, origin)
+        symbols = np.array(atoms.get_chemical_symbols())
+        return _apply_indices(symbols, indices, species)
 
 
 def _validate_shape(
@@ -215,8 +248,9 @@ def _build_indices(
         Integer array of shape (3, Nx, Ny, Nz) mapping (direction, i, j, k)
         to the index of the corresponding atom in `positions`. Each layer is
         indexed by the xyz-grid coordinate of the anion (not by chain-layout
-        order); `_apply_indices` transposes each layer into chain-layout
-        order when constructing the public `ChainArrays`.
+        order); `_apply_indices` packages the species-masked layers into
+        a `SublatticeOccupation`, whose chain-layout views transpose each
+        layer as needed.
 
     Raises:
         ValueError: On non-orthorhombic cells, off-lattice atoms, wrong atom
@@ -370,8 +404,8 @@ def _apply_indices(
     symbols: np.ndarray,
     indices: np.ndarray,
     species: str,
-) -> ChainArrays:
-    """Apply a cached index map to produce three per-direction binary arrays.
+) -> SublatticeOccupation:
+    """Apply a cached index map to produce a `SublatticeOccupation`.
 
     Args:
         symbols: Chemical symbols per atom, shape (n_atoms,).
@@ -380,11 +414,9 @@ def _apply_indices(
         species: Element symbol to flag as 1. Others are flagged 0.
 
     Returns:
-        `ChainArrays` namedtuple of three integer arrays with
-        direction-specific shapes: `x` is (Ny, Nz, Nx), `y` is
-        (Nx, Nz, Ny), `z` is (Nx, Ny, Nz). Each has the same dtype
-        as the flagged-species mask. In the cubic case Nx=Ny=Nz=N
-        these all reduce to (N, N, N).
+        `SublatticeOccupation` whose `.occupation` field is the
+        shape-(3, Nx, Ny, Nz) xyz-coord integer array. Chain-layout
+        views are exposed via the `.x`, `.y`, `.z` properties.
     """
     anion_symbols = symbols[indices]
     is_species = (anion_symbols == species).astype(np.int64)
@@ -394,10 +426,4 @@ def _apply_indices(
             f"species={species!r} not found on any anion site. "
             f"Anion species present: {present}."
         )
-    # `is_species` is xyz-coord: axes (direction, i, j, k). Transpose each
-    # layer into public chain-layout order (last axis = along-chain).
-    return ChainArrays(
-        x=is_species[Direction.X].transpose(1, 2, 0),  # (i,j,k) -> (j,k,i)
-        y=is_species[Direction.Y].transpose(0, 2, 1),  # (i,j,k) -> (i,k,j)
-        z=is_species[Direction.Z],                     # (i,j,k) unchanged
-    )
+    return SublatticeOccupation(occupation=is_species)

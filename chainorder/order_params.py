@@ -1,10 +1,11 @@
 """Order parameters for ReO3-type anion ordering (chain-level statistics).
 
 All functions here expect the per-direction binary integer arrays
-produced by `chainorder.decompose`, with the last axis along-chain. The
-exact shape is direction-specific (see `chainorder.decompose.ChainArrays`):
-``(Ny, Nz, Nx)`` for x, ``(Nx, Nz, Ny)`` for y, ``(Nx, Ny, Nz)`` for z.
-In the cubic case all three reduce to ``(N, N, N)``.
+exposed by `chainorder.decompose.SublatticeOccupation` via its `.x`,
+`.y`, `.z` chain-layout views, with the last axis along-chain. The
+exact shape is direction-specific: ``(Ny, Nz, Nx)`` for x, ``(Nx, Nz,
+Ny)`` for y, ``(Nx, Ny, Nz)`` for z. In the cubic case all three reduce
+to ``(N, N, N)``.
 """
 import numpy as np
 
