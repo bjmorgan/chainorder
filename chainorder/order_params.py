@@ -14,9 +14,9 @@ def chain_fft(anion_direction: np.ndarray) -> np.ndarray:
     """Discrete Fourier transform along each chain.
 
     Args:
-        anion_direction: Binary species array for a single chain direction
-            (from `decompose()`), shape `(N_lat0, N_lat1, N_chain)`. Last
-            axis is along-chain.
+        anion_direction: Binary species array along one chain direction (a
+            chain-layout view such as `SublatticeOccupation.x`), shape
+            `(N_lat0, N_lat1, N_chain)`. Last axis is along-chain.
 
     Returns:
         Complex array of the same shape as `anion_direction`. Last axis

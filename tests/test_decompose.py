@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 from chainorder import SublatticeOccupation
-from chainorder.decompose import SublatticeOccupation, Direction
+from chainorder.decompose import Direction
 from tests._fixtures import (
     build_nbo2f,
     perfect_oof_chain,
