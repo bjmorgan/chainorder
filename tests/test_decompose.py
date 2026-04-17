@@ -70,7 +70,7 @@ def test_decompose_orthorhombic_round_trip(shape):
     az_in = oof_or_zero(shape, phase=1, direction="z")
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
 
-    out = SublatticeOccupation.from_atoms(atoms, N=shape)
+    out = SublatticeOccupation.from_atoms(atoms, N=shape, species="F")
 
     np.testing.assert_array_equal(out.x, ax_in)
     np.testing.assert_array_equal(out.y, ay_in)
@@ -85,7 +85,7 @@ def test_decompose_returns_input_species_arrays(shape):
     az_in = oof_or_zero(shape, phase=1, direction="z")
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
 
-    ax_out, ay_out, az_out = SublatticeOccupation.from_atoms(atoms, N=shape)
+    ax_out, ay_out, az_out = SublatticeOccupation.from_atoms(atoms, N=shape, species="F")
 
     np.testing.assert_array_equal(ax_out, ax_in)
     np.testing.assert_array_equal(ay_out, ay_in)
@@ -103,7 +103,7 @@ def test_from_atoms_returns_sublattice_occupation_with_primary_form(shape):
     az_in = oof_or_zero(shape, phase=1, direction="z")
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
 
-    result = SublatticeOccupation.from_atoms(atoms, N=shape)
+    result = SublatticeOccupation.from_atoms(atoms, N=shape, species="F")
 
     assert isinstance(result, SublatticeOccupation)
     assert result.occupation.shape == (3, Nx, Ny, Nz)
@@ -128,7 +128,7 @@ def test_decompose_with_half_origin(shape):
     az_in = oof_or_zero(shape, phase=0, direction="z")
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in, origin=(0.5, 0.5, 0.5))
 
-    ax_out, ay_out, az_out = SublatticeOccupation.from_atoms(atoms, N=shape, origin=(0.5, 0.5, 0.5))
+    ax_out, ay_out, az_out = SublatticeOccupation.from_atoms(atoms, N=shape, origin=(0.5, 0.5, 0.5), species="F")
 
     np.testing.assert_array_equal(ax_out, ax_in)
     np.testing.assert_array_equal(ay_out, ay_in)
@@ -137,7 +137,8 @@ def test_decompose_with_half_origin(shape):
 
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_tracks_alternative_species(shape):
-    """Default species='F' flags F. Passing species='O' flags O instead (inverted)."""
+    """Passing species='O' flags O sites as 1; the result is the complement
+    of the same Atoms decomposed with species='F'."""
     ax_in = oof_or_zero(shape, phase=2, direction="x")
     _, ay_in, az_in = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
@@ -175,7 +176,7 @@ def test_decompose_raises_on_wrong_cation_count():
         pbc=True,
     )
     with pytest.raises(ValueError, match="Wrong cation count"):
-        SublatticeOccupation.from_atoms(atoms, N=3)
+        SublatticeOccupation.from_atoms(atoms, N=3, species="F")
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -203,7 +204,7 @@ def test_decompose_rejects_invalid_N():
     atoms = build_nbo2f(N, ax, ay, az)
     for bad_N in (0, -1, 2.5):
         with pytest.raises(ValueError, match="N must be a positive integer"):
-            SublatticeOccupation.from_atoms(atoms, N=bad_N)     # type: ignore[arg-type]
+            SublatticeOccupation.from_atoms(atoms, N=bad_N, species="F")     # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -253,7 +254,7 @@ def test_decompose_raises_on_non_finite_in_cell(row, col, bad_value):
     new_cell[row, col] = bad_value
     atoms.set_cell(new_cell)
     with pytest.raises(ValueError, match="finite"):
-        SublatticeOccupation.from_atoms(atoms, N=N)
+        SublatticeOccupation.from_atoms(atoms, N=N, species="F")
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -360,7 +361,8 @@ def test_decompose_rebuilds_when_single_axis_changes(monkeypatch):
 
 
 def test_decompose_scalar_and_tuple_N_equivalent():
-    """SublatticeOccupation.from_atoms(atoms, N=3) and SublatticeOccupation.from_atoms(atoms, N=(3, 3, 3)) produce
+    """SublatticeOccupation.from_atoms(atoms, N=3, species="F") and
+    SublatticeOccupation.from_atoms(atoms, N=(3, 3, 3), species="F") produce
     bit-identical SublatticeOccupations and hit the same cache entry."""
     import importlib
     dm = importlib.import_module("chainorder.decompose")
@@ -372,9 +374,9 @@ def test_decompose_scalar_and_tuple_N_equivalent():
     az_in = perfect_oof_chain(N, phase=1)
     atoms = build_nbo2f(N, ax_in, ay_in, az_in)
 
-    out_scalar = SublatticeOccupation.from_atoms(atoms, N=3)
+    out_scalar = SublatticeOccupation.from_atoms(atoms, N=3, species="F")
     hits_after_scalar = dm._indices_cached.cache_info().hits
-    out_tuple = SublatticeOccupation.from_atoms(atoms, N=(3, 3, 3))
+    out_tuple = SublatticeOccupation.from_atoms(atoms, N=(3, 3, 3), species="F")
     hits_after_tuple = dm._indices_cached.cache_info().hits
 
     np.testing.assert_array_equal(out_scalar.x, out_tuple.x)

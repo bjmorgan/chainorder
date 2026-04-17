@@ -34,6 +34,7 @@ def chain_fft(anion_direction: np.ndarray) -> np.ndarray:
 
 def motif_counts(
     anion_direction: np.ndarray,
+    *,
     window_length: int,
 ) -> dict[tuple[int, ...], np.ndarray]:
     """Count cyclic-equivalence classes of length-`window_length` motifs per chain.

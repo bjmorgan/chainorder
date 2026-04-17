@@ -91,9 +91,10 @@ class SublatticeOccupation:
     def from_atoms(
         cls,
         atoms: Atoms,
+        *,
         N: int | tuple[int, int, int],
+        species: str,
         origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        species: str = "F",
     ) -> "SublatticeOccupation":
         """Decompose an on-lattice ReO3-type supercell into a sublattice occupation.
 
@@ -123,7 +124,7 @@ class SublatticeOccupation:
                 component must lie in `[0.0, 1.0)`; values outside this range
                 raise.
             species: Element symbol to flag as 1 in the output occupation.
-                Default `"F"`; all other anion species are flagged 0.
+                All other anion species are flagged 0.
 
         Returns:
             A SublatticeOccupation whose primary field .occupation has shape

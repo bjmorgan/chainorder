@@ -43,8 +43,8 @@ pip install -e ".[dev]"
 from ase.io import read
 from chainorder import SublatticeOccupation, order_params
 
-atoms = read("frame.xyz")                       # any ASE-readable format
-occ = SublatticeOccupation.from_atoms(atoms, N=6) # supercell size (cubic shorthand)
+atoms = read("frame.xyz")                                   # any ASE-readable format
+occ = SublatticeOccupation.from_atoms(atoms, N=6, species="F")  # supercell size (cubic shorthand)
 
 sf = order_params.structure_factor(occ)                      # 3D structure factor
 spectrum = order_params.chain_fft(occ.x)                     # per x-chain FFT
@@ -72,7 +72,7 @@ A full trajectory is just a loop: per frame, build a
   - `chain_fft(arr)` -- discrete Fourier transform along each chain.
   - `along_chain_correlation(arr)` -- pair correlation g(r) along chains,
     grand-averaged over the chain-plane.
-  - `motif_counts(arr, window_length)` -- tallies of cyclic-equivalent
+  - `motif_counts(arr, window_length=N)` -- tallies of cyclic-equivalent
     length-`window_length` motifs per chain.
   - `inter_chain_correlation(arr)` -- spatial autocorrelation of the
     period-3 Fourier component across the chain plane.
