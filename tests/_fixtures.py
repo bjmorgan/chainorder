@@ -165,3 +165,36 @@ def dummy_chain_arrays(
         np.zeros((Nx, Nz, Ny), dtype=int),
         np.zeros((Nx, Ny, Nz), dtype=int),
     )
+
+
+def occupation_from_chain_arrays(
+    shape: tuple[int, int, int],
+    x: np.ndarray | None = None,
+    y: np.ndarray | None = None,
+    z: np.ndarray | None = None,
+) -> "SublatticeOccupation":
+    """Build a `SublatticeOccupation` from per-direction chain-layout arrays.
+
+    Each argument is a chain-layout array in the convention returned by
+    `perfect_oof_chain` / `perfect_ofof_chain`: shape `(Ny, Nz, Nx)` for
+    `x`, `(Nx, Nz, Ny)` for `y`, `(Nx, Ny, Nz)` for `z`. Missing
+    directions default to all-zero xyz-coord layers. The helper un-
+    transposes each chain-layout input back to xyz-coord to populate the
+    SublatticeOccupation's primary array.
+
+    Convenience for tests that want per-sublattice control of the input
+    to a 3D-operation function (e.g. `structure_factor`).
+    """
+    from chainorder.decompose import SublatticeOccupation
+    Nx, Ny, Nz = _normalise_shape(shape)
+    data = np.zeros((3, Nx, Ny, Nz), dtype=np.int64)
+    if x is not None:
+        # x is (Ny, Nz, Nx) chain-layout; transpose to (Nx, Ny, Nz) xyz-coord.
+        data[0] = x.transpose(2, 0, 1)
+    if y is not None:
+        # y is (Nx, Nz, Ny); transpose to (Nx, Ny, Nz).
+        data[1] = y.transpose(0, 2, 1)
+    if z is not None:
+        # z is (Nx, Ny, Nz) already xyz-coord.
+        data[2] = z
+    return SublatticeOccupation(occupation=data)

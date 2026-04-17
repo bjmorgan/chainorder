@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
-from chainorder import decompose
+from chainorder import SublatticeOccupation
+from chainorder.decompose import Direction
 from tests._fixtures import (
     build_nbo2f,
     perfect_oof_chain,
@@ -8,6 +9,57 @@ from tests._fixtures import (
     dummy_chain_arrays,
     SHAPES,
 )
+
+
+def test_sublattice_occupation_exposes_primary_and_chain_views():
+    """SublatticeOccupation holds a (3, Nx, Ny, Nz) xyz-coord array as its
+    primary form. .x/.y/.z expose the chain-layout transpose views."""
+    Nx, Ny, Nz = 2, 3, 4
+    data = np.arange(3 * Nx * Ny * Nz).reshape(3, Nx, Ny, Nz)
+    occ = SublatticeOccupation(occupation=data)
+
+    # Primary form is the input array by identity.
+    assert occ.occupation is data
+    assert occ.occupation.shape == (3, Nx, Ny, Nz)
+
+    # Chain-layout views: direction-specific shapes, last axis along-chain.
+    assert occ.x.shape == (Ny, Nz, Nx)
+    assert occ.y.shape == (Nx, Nz, Ny)
+    assert occ.z.shape == (Nx, Ny, Nz)
+
+    # Contents match the documented transposes.
+    np.testing.assert_array_equal(occ.x, data[Direction.X].transpose(1, 2, 0))
+    np.testing.assert_array_equal(occ.y, data[Direction.Y].transpose(0, 2, 1))
+    np.testing.assert_array_equal(occ.z, data[Direction.Z])
+
+    # __iter__ yields (x, y, z) for positional unpacking.
+    ax, ay, az = occ
+    np.testing.assert_array_equal(ax, occ.x)
+    np.testing.assert_array_equal(ay, occ.y)
+    np.testing.assert_array_equal(az, occ.z)
+
+
+def test_sublattice_occupation_from_atoms_is_immutable():
+    """The occupation array (and its transpose views) produced by
+    `from_atoms` is read-only, so that `@dataclass(frozen=True)`'s
+    immutability extends to the underlying buffer."""
+    shape = (3, 3, 3)
+    ax_in, ay_in, az_in = dummy_chain_arrays(shape)
+    atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
+    occ = SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
+
+    # The primary buffer is read-only: direct mutation raises.
+    with pytest.raises(ValueError, match="read-only"):
+        occ.occupation[0, 0, 0, 0] = 0
+
+    # Chain-layout views are transpose views of the primary buffer, so
+    # they inherit the read-only flag -- mutating .x/.y/.z raises too.
+    with pytest.raises(ValueError, match="read-only"):
+        occ.x[0, 0, 0] = 0
+    with pytest.raises(ValueError, match="read-only"):
+        occ.y[0, 0, 0] = 0
+    with pytest.raises(ValueError, match="read-only"):
+        occ.z[0, 0, 0] = 0
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -18,7 +70,7 @@ def test_decompose_orthorhombic_round_trip(shape):
     az_in = oof_or_zero(shape, phase=1, direction="z")
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
 
-    out = decompose(atoms, N=shape)
+    out = SublatticeOccupation.from_atoms(atoms, N=shape)
 
     np.testing.assert_array_equal(out.x, ax_in)
     np.testing.assert_array_equal(out.y, ay_in)
@@ -33,11 +85,38 @@ def test_decompose_returns_input_species_arrays(shape):
     az_in = oof_or_zero(shape, phase=1, direction="z")
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
 
-    ax_out, ay_out, az_out = decompose(atoms, N=shape)
+    ax_out, ay_out, az_out = SublatticeOccupation.from_atoms(atoms, N=shape)
 
     np.testing.assert_array_equal(ax_out, ax_in)
     np.testing.assert_array_equal(ay_out, ay_in)
     np.testing.assert_array_equal(az_out, az_in)
+
+
+@pytest.mark.parametrize("shape", SHAPES)
+def test_from_atoms_returns_sublattice_occupation_with_primary_form(shape):
+    """`SublatticeOccupation.from_atoms(...)` returns a `SublatticeOccupation`;
+    its primary `.occupation` field has shape `(3, Nx, Ny, Nz)` with
+    per-layer content consistent with the chain-layout views."""
+    Nx, Ny, Nz = shape
+    ax_in = oof_or_zero(shape, phase=2, direction="x")
+    ay_in = oof_or_zero(shape, phase=0, direction="y")
+    az_in = oof_or_zero(shape, phase=1, direction="z")
+    atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
+
+    result = SublatticeOccupation.from_atoms(atoms, N=shape)
+
+    assert isinstance(result, SublatticeOccupation)
+    assert result.occupation.shape == (3, Nx, Ny, Nz)
+    np.testing.assert_array_equal(
+        result.occupation[Direction.X].transpose(1, 2, 0), result.x
+    )
+    np.testing.assert_array_equal(
+        result.occupation[Direction.Y].transpose(0, 2, 1), result.y
+    )
+    np.testing.assert_array_equal(result.occupation[Direction.Z], result.z)
+    np.testing.assert_array_equal(result.x, ax_in)
+    np.testing.assert_array_equal(result.y, ay_in)
+    np.testing.assert_array_equal(result.z, az_in)
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -49,7 +128,7 @@ def test_decompose_with_half_origin(shape):
     az_in = oof_or_zero(shape, phase=0, direction="z")
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in, origin=(0.5, 0.5, 0.5))
 
-    ax_out, ay_out, az_out = decompose(atoms, N=shape, origin=(0.5, 0.5, 0.5))
+    ax_out, ay_out, az_out = SublatticeOccupation.from_atoms(atoms, N=shape, origin=(0.5, 0.5, 0.5))
 
     np.testing.assert_array_equal(ax_out, ax_in)
     np.testing.assert_array_equal(ay_out, ay_in)
@@ -63,7 +142,7 @@ def test_decompose_tracks_alternative_species(shape):
     _, ay_in, az_in = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
 
-    ax_o, ay_o, az_o = decompose(atoms, N=shape, species="O")
+    ax_o, ay_o, az_o = SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
     # With species="O", the anion arrays flag O as 1 and F as 0, so they should
     # be the complement of the F-flagged arrays.
     np.testing.assert_array_equal(ax_o, 1 - ax_in)
@@ -82,7 +161,7 @@ def test_decompose_raises_on_off_lattice_atom(shape):
     # Match on the upgraded diagnostic content (axis letter) so a future
     # refactor can't silently strip the detail.
     with pytest.raises(ValueError, match=r"Atom \d+ is not on-lattice.*axis x"):
-        decompose(atoms, N=shape, species="O")
+        SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
 
 
 def test_decompose_raises_on_wrong_cation_count():
@@ -96,7 +175,7 @@ def test_decompose_raises_on_wrong_cation_count():
         pbc=True,
     )
     with pytest.raises(ValueError, match="Wrong cation count"):
-        decompose(atoms, N=3)
+        SublatticeOccupation.from_atoms(atoms, N=3)
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -112,7 +191,7 @@ def test_decompose_raises_on_wrong_anion_count(shape):
     # Remove one anion; cation count (Nx*Ny*Nz) stays correct, anion count drops.
     del atoms[Nx * Ny * Nz + 5]
     with pytest.raises(ValueError, match="Wrong anion count"):
-        decompose(atoms, N=shape, species="O")
+        SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
 
 
 def test_decompose_rejects_invalid_N():
@@ -124,7 +203,7 @@ def test_decompose_rejects_invalid_N():
     atoms = build_nbo2f(N, ax, ay, az)
     for bad_N in (0, -1, 2.5):
         with pytest.raises(ValueError, match="N must be a positive integer"):
-            decompose(atoms, N=bad_N)     # type: ignore[arg-type]
+            SublatticeOccupation.from_atoms(atoms, N=bad_N)     # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -134,7 +213,7 @@ def test_decompose_rejects_origin_out_of_range(shape):
     atoms = build_nbo2f(shape, ax, ay, az)
     for bad_origin in ((1.5, 0.0, 0.0), (-0.1, 0.0, 0.0), (0.0, 1.0, 0.0)):
         with pytest.raises(ValueError, match=r"origin\[\d\] must lie in"):
-            decompose(atoms, N=shape, origin=bad_origin, species="O")
+            SublatticeOccupation.from_atoms(atoms, N=shape, origin=bad_origin, species="O")
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -143,7 +222,7 @@ def test_decompose_raises_when_species_absent(shape):
     ax, ay, az = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax, ay, az)
     with pytest.raises(ValueError, match="species='Xe' not found"):
-        decompose(atoms, N=shape, species="Xe")
+        SublatticeOccupation.from_atoms(atoms, N=shape, species="Xe")
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -153,7 +232,7 @@ def test_decompose_raises_on_degenerate_cell(shape):
     atoms = build_nbo2f(shape, ax, ay, az)
     atoms.set_cell(np.diag([0.0, 0.0, 0.0]))
     with pytest.raises(ValueError, match="diagonal must be positive"):
-        decompose(atoms, N=shape, species="O")
+        SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
 
 
 @pytest.mark.parametrize("row,col", [(0, 1), (0, 2), (1, 2), (2, 0)])
@@ -174,7 +253,7 @@ def test_decompose_raises_on_non_finite_in_cell(row, col, bad_value):
     new_cell[row, col] = bad_value
     atoms.set_cell(new_cell)
     with pytest.raises(ValueError, match="finite"):
-        decompose(atoms, N=N)
+        SublatticeOccupation.from_atoms(atoms, N=N)
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -188,7 +267,7 @@ def test_decompose_raises_on_non_orthorhombic_cell(shape):
     atoms.set_cell(new_cell)
 
     with pytest.raises(ValueError, match="not orthorhombic"):
-        decompose(atoms, N=shape, species="O")
+        SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
 
 
 def test_decompose_rejects_permuted_N_with_structural_diagnostic():
@@ -203,7 +282,7 @@ def test_decompose_rejects_permuted_N_with_structural_diagnostic():
     # ratio check this would slip past the count check and fail
     # misleadingly at the on-lattice test.
     with pytest.raises(ValueError, match="does not match cell"):
-        decompose(atoms, N=(3, 4, 2), species="O")
+        SublatticeOccupation.from_atoms(atoms, N=(3, 4, 2), species="O")
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -227,9 +306,9 @@ def test_decompose_caches_indices_across_calls(monkeypatch, shape):
     ax_in, ay_in, az_in = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
 
-    decompose(atoms, N=shape, species="O")
-    decompose(atoms, N=shape, species="O")
-    decompose(atoms, N=shape, species="O")
+    SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
+    SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
+    SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
 
     assert call_count["n"] == 1, f"Expected 1 build, got {call_count['n']}"
 
@@ -252,7 +331,7 @@ def test_decompose_rebuilds_when_n_changes(monkeypatch):
     for shape in [(3, 3, 3), (6, 6, 6), (2, 3, 4), (3, 3, 4)]:
         ax_in, ay_in, az_in = dummy_chain_arrays(shape)
         atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
-        decompose(atoms, N=shape, species="O")
+        SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
 
     assert call_count["n"] == 4
 
@@ -275,14 +354,14 @@ def test_decompose_rebuilds_when_single_axis_changes(monkeypatch):
     for shape in [(3, 3, 3), (3, 3, 6), (3, 6, 3), (6, 3, 3)]:
         ax, ay, az = dummy_chain_arrays(shape)
         atoms = build_nbo2f(shape, ax, ay, az)
-        decompose(atoms, N=shape, species="O")
+        SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
 
     assert call_count["n"] == 4
 
 
 def test_decompose_scalar_and_tuple_N_equivalent():
-    """decompose(atoms, N=3) and decompose(atoms, N=(3, 3, 3)) produce
-    bit-identical ChainArrays and hit the same cache entry."""
+    """SublatticeOccupation.from_atoms(atoms, N=3) and SublatticeOccupation.from_atoms(atoms, N=(3, 3, 3)) produce
+    bit-identical SublatticeOccupations and hit the same cache entry."""
     import importlib
     dm = importlib.import_module("chainorder.decompose")
     dm._indices_cached.cache_clear()
@@ -293,9 +372,9 @@ def test_decompose_scalar_and_tuple_N_equivalent():
     az_in = perfect_oof_chain(N, phase=1)
     atoms = build_nbo2f(N, ax_in, ay_in, az_in)
 
-    out_scalar = decompose(atoms, N=3)
+    out_scalar = SublatticeOccupation.from_atoms(atoms, N=3)
     hits_after_scalar = dm._indices_cached.cache_info().hits
-    out_tuple = decompose(atoms, N=(3, 3, 3))
+    out_tuple = SublatticeOccupation.from_atoms(atoms, N=(3, 3, 3))
     hits_after_tuple = dm._indices_cached.cache_info().hits
 
     np.testing.assert_array_equal(out_scalar.x, out_tuple.x)
@@ -336,8 +415,8 @@ def test_decompose_cache_hit_with_new_symbols_same_positions(monkeypatch, shape)
 
     # Use species="O" so that all-zero F patterns (when a shape axis is
     # not divisible by 3) still satisfy the species-present check.
-    out_first = decompose(atoms_first, N=shape, species="O")
-    out_second = decompose(atoms_second, N=shape, species="O")
+    out_first = SublatticeOccupation.from_atoms(atoms_first, N=shape, species="O")
+    out_second = SublatticeOccupation.from_atoms(atoms_second, N=shape, species="O")
 
     # Index map built exactly once.
     assert call_count["n"] == 1, f"Expected 1 build, got {call_count['n']}"

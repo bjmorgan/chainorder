@@ -1,7 +1,13 @@
 import numpy as np
 import pytest
 from chainorder import order_params
-from tests._fixtures import perfect_oof_chain, perfect_ofof_chain, SHAPES
+from chainorder.decompose import SublatticeOccupation
+from tests._fixtures import (
+    perfect_oof_chain,
+    perfect_ofof_chain,
+    occupation_from_chain_arrays,
+    SHAPES,
+)
 
 
 ROT_SHAPES: list[tuple[int, int, int]] = [(3, 3, 3), (6, 6, 6), (4, 4, 6)]
@@ -389,17 +395,32 @@ def test_inter_chain_correlation_raises_on_zero_amplitude():
         order_params.inter_chain_correlation(arr_full)
 
 
+def test_structure_factor_takes_sublattice_occupation():
+    """`structure_factor` accepts a single `SublatticeOccupation` and
+    produces the same numerical output as the pre-refactor three-arg
+    form would have on the same per-sublattice content."""
+    Nx, Ny, Nz = 6, 4, 3
+    shape = (Nx, Ny, Nz)
+    ax = perfect_oof_chain(shape, phase=2, direction="x")
+    occ = occupation_from_chain_arrays(shape, x=ax)
+
+    F = order_params.structure_factor(occ)
+
+    assert F.shape == (Nx, Ny, Nz)
+    np.testing.assert_allclose(np.abs(F[0, 0, 0]), 1.0 / 3.0, atol=1e-12)
+    np.testing.assert_allclose(np.abs(F[Nx // 3, 0, 0]), 1.0 / 3.0, atol=1e-12)
+
+
 @pytest.mark.parametrize("shape", SHAPES)
 def test_structure_factor_x_only_peaks_on_kx_axis(shape):
     """x-chains OOF (when Nx divisible by 3), y/z empty: peaks on kx axis."""
     Nx, Ny, Nz = shape
     if Nx % 3 != 0:
         pytest.skip(f"Nx={Nx} not divisible by 3")
-    ax = perfect_oof_chain(shape, phase=2, direction="x")   # (Ny, Nz, Nx)
-    zy = np.zeros((Nx, Nz, Ny), dtype=int)
-    zz = np.zeros((Nx, Ny, Nz), dtype=int)
+    ax = perfect_oof_chain(shape, phase=2, direction="x")
+    occ = occupation_from_chain_arrays(shape, x=ax)
 
-    F = order_params.structure_factor(ax, zy, zz)
+    F = order_params.structure_factor(occ)
 
     assert F.shape == (Nx, Ny, Nz)
     np.testing.assert_allclose(np.abs(F[0, 0, 0]), 1.0 / 3.0, atol=1e-12)
@@ -416,11 +437,11 @@ def test_structure_factor_orthorhombic_x_only_normalisation():
     """Nx=6, Ny=4, Nz=3: Nx-only OOF gives correct per-axis phase and
     normalisation. Catches the /(N**3) vs /(Nx*Ny*Nz) regression."""
     Nx, Ny, Nz = 6, 4, 3
-    ax = perfect_oof_chain((Nx, Ny, Nz), phase=2, direction="x")
-    zy = np.zeros((Nx, Nz, Ny), dtype=int)
-    zz = np.zeros((Nx, Ny, Nz), dtype=int)
+    shape = (Nx, Ny, Nz)
+    ax = perfect_oof_chain(shape, phase=2, direction="x")
+    occ = occupation_from_chain_arrays(shape, x=ax)
 
-    F = order_params.structure_factor(ax, zy, zz)
+    F = order_params.structure_factor(occ)
     assert F.shape == (Nx, Ny, Nz)
     np.testing.assert_allclose(np.abs(F[Nx // 3, 0, 0]), 1.0 / 3.0, atol=1e-12)
     np.testing.assert_allclose(np.abs(F[0, 0, 0]), 1.0 / 3.0, atol=1e-12)
@@ -433,17 +454,18 @@ def test_structure_factor_rotation_equivariance_about_z(shape):
     assert Nx == Ny, f"ROT_SHAPES must have Nx == Ny, got {shape}"
     if Nx % 3 != 0:
         pytest.skip(f"Nx={Nx} not divisible by 3")
-    ordered_x = perfect_oof_chain(shape, phase=2, direction="x")    # (Ny, Nz, Nx)
-    ordered_y = perfect_oof_chain(shape, phase=2, direction="y")    # (Nx, Nz, Ny)
-    zero_x = np.zeros((Ny, Nz, Nx), dtype=int)
-    zero_y = np.zeros((Nx, Nz, Ny), dtype=int)
-    zero_z = np.zeros((Nx, Ny, Nz), dtype=int)
+    ordered_x = perfect_oof_chain(shape, phase=2, direction="x")
+    ordered_y = perfect_oof_chain(shape, phase=2, direction="y")
 
     # "Unrotated": x-chains carry the OOF pattern.
-    F_unrot = order_params.structure_factor(ordered_x, zero_y, zero_z)
+    F_unrot = order_params.structure_factor(
+        occupation_from_chain_arrays(shape, x=ordered_x)
+    )
     # "Rotated 90 deg about z": what were x-chains are now y-chains, so the
     # same occupation pattern (same phase) appears on y-chains.
-    F_rot = order_params.structure_factor(zero_x, ordered_y, zero_z)
+    F_rot = order_params.structure_factor(
+        occupation_from_chain_arrays(shape, y=ordered_y)
+    )
 
     # Peaks move from (kx, 0, 0) to (0, ky, 0).
     for k in (Nx // 3, 2 * Nx // 3):
@@ -463,7 +485,8 @@ def test_structure_factor_all_directions_ordered_has_cubic_symmetry(shape):
     ax = perfect_oof_chain(shape, phase=2, direction="x")
     ay = perfect_oof_chain(shape, phase=2, direction="y")
     az = perfect_oof_chain(shape, phase=2, direction="z")
-    F = order_params.structure_factor(ax, ay, az)
+    occ = occupation_from_chain_arrays(shape, x=ax, y=ay, z=az)
+    F = order_params.structure_factor(occ)
     # Period-3 peaks on each Cartesian axis, equal magnitude.
     np.testing.assert_allclose(np.abs(F[Nx // 3, 0, 0]), 1.0 / 3.0, atol=1e-12)
     np.testing.assert_allclose(np.abs(F[0, Nx // 3, 0]), 1.0 / 3.0, atol=1e-12)
@@ -494,7 +517,8 @@ def test_structure_factor_single_anion_carries_sublattice_phase(shape, sublattic
     else:
         az[0, 0, 0] = 1
         N_axis = Nz
-    F = order_params.structure_factor(ax, ay, az)
+    occ = occupation_from_chain_arrays(shape, x=ax, y=ay, z=az)
+    F = order_params.structure_factor(occ)
 
     for k in range(N_axis):
         expected = np.exp(-1j * np.pi * k / N_axis) / (Nx * Ny * Nz)
@@ -510,26 +534,16 @@ def test_structure_factor_single_anion_carries_sublattice_phase(shape, sublattic
         )
 
 
-def test_structure_factor_rejects_field_transposition():
-    """Passing arr.z where arr.x is expected (different orthorhombic shape)
-    is caught by the per-direction shape check."""
-    Nx, Ny, Nz = 6, 4, 3
-    shape = (Nx, Ny, Nz)
-    ax = np.zeros((Ny, Nz, Nx), dtype=int)          # correct shape for x
-    ay = np.zeros((Nx, Nz, Ny), dtype=int)
-    az = np.zeros((Nx, Ny, Nz), dtype=int)
+def test_structure_factor_rejects_malformed_occupation_shape():
+    """`.occupation` must be 4-D with leading axis of length 3."""
+    # Leading axis wrong length.
+    bad_leading = SublatticeOccupation(occupation=np.zeros((2, 4, 4, 4), dtype=int))
+    with pytest.raises(ValueError, match="shape \\(3, Nx, Ny, Nz\\)"):
+        order_params.structure_factor(bad_leading)
 
-    # Pass az in the x slot; shape is (Nx, Ny, Nz), not (Ny, Nz, Nx).
-    with pytest.raises(ValueError, match="inconsistent per-direction shapes"):
-        order_params.structure_factor(az, ay, az)
-
-
-def test_structure_factor_raises_on_shape_mismatch():
-    """Three 3-D arrays whose per-direction shapes don't share a (Nx, Ny, Nz)."""
-    ax = np.zeros((6, 6, 6), dtype=int)   # (Ny, Nz, Nx) -> Nx=6, Ny=6, Nz=6
-    ay = np.zeros((6, 4, 6), dtype=int)   # (Nx, Nz, Ny) -> Nx=6, Ny=6, Nz=4  (Nz mismatch)
-    az = np.zeros((6, 6, 6), dtype=int)   # (Nx, Ny, Nz) -> Nx=6, Ny=6, Nz=6
-    with pytest.raises(ValueError, match="inconsistent per-direction shapes"):
-        order_params.structure_factor(ax, ay, az)
+    # Wrong rank (3-D instead of 4-D).
+    bad_rank = SublatticeOccupation(occupation=np.zeros((3, 4, 4), dtype=int))
+    with pytest.raises(ValueError, match="shape \\(3, Nx, Ny, Nz\\)"):
+        order_params.structure_factor(bad_rank)
 
 
