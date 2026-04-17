@@ -250,6 +250,24 @@ def _build_indices(
             f"Cell diagonal must be positive, got {diag}."
         )
 
+    # Uniform lattice parameter check: `diag / N_per_axis` should be the
+    # same per axis. A mismatch means the shape tuple doesn't correspond
+    # to the cell -- most commonly a permuted N (e.g. passing (Nx, Nz, Ny)
+    # for a cell with axis lengths Nx*a, Ny*a, Nz*a). Without this check
+    # the permutation sails through to the on-lattice test, which then
+    # reports "atom not on-lattice" even though the structure IS on-
+    # lattice with the correct N.
+    per_axis_a = diag / N_per_axis
+    if not np.allclose(per_axis_a, per_axis_a[0], rtol=_TOL):
+        raise ValueError(
+            f"Shape {shape} does not match cell: per-axis lattice parameters "
+            f"implied by diag/N are {tuple(per_axis_a)}, which disagree. The "
+            f"cell diagonal {tuple(diag)} implies a single lattice parameter "
+            f"only when N is proportional to the diagonal. Check that N is "
+            f"passed in the (Nx, Ny, Nz) order matching the cell's "
+            f"(x, y, z) diagonals."
+        )
+
     inv_cell = np.linalg.inv(cell)
     # The origin offset is a unit-cell-fractional shift (how the cation
     # sits within each unit cell). Convert to supercell-fractional per

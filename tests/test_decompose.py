@@ -191,6 +191,21 @@ def test_decompose_raises_on_non_orthorhombic_cell(shape):
         decompose(atoms, N=shape, species="O")
 
 
+def test_decompose_rejects_permuted_N_with_structural_diagnostic():
+    """A permuted N on a legitimately on-lattice orthorhombic structure
+    must raise a "shape does not match cell" error, not a misleading
+    "not on-lattice" error."""
+    shape = (2, 3, 4)
+    ax, ay, az = dummy_chain_arrays(shape)
+    atoms = build_nbo2f(shape, ax, ay, az)        # cell diag == (2a, 3a, 4a)
+    # Permute: pass (3, 4, 2) for a (2, 3, 4) cell. Anion count is
+    # permutation-invariant (3 * Nx * Ny * Nz), so without the aspect
+    # ratio check this would slip past the count check and fail
+    # misleadingly at the on-lattice test.
+    with pytest.raises(ValueError, match="does not match cell"):
+        decompose(atoms, N=(3, 4, 2), species="O")
+
+
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_caches_indices_across_calls(monkeypatch, shape):
     """Calling decompose twice with the same positions/N/origin should only
