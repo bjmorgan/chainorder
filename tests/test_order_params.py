@@ -398,12 +398,10 @@ def test_structure_factor_takes_sublattice_occupation():
     np.testing.assert_allclose(np.abs(F[Nx // 3, 0, 0]), 1.0 / 3.0, atol=1e-12)
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", ICC_ROT_SHAPES)
 def test_structure_factor_x_only_peaks_on_kx_axis(shape):
-    """x-chains OOF (when Nx divisible by 3), y/z empty: peaks on kx axis."""
+    """x-chains OOF (Nx divisible by 3), y/z empty: peaks on kx axis."""
     Nx, Ny, Nz = shape
-    if Nx % 3 != 0:
-        pytest.skip(f"Nx={Nx} not divisible by 3")
     ax = perfect_oof_chain(shape, phase=2, direction="x")
     occ = occupation_from_chain_arrays(shape, x=ax)
 
@@ -434,13 +432,17 @@ def test_structure_factor_orthorhombic_x_only_normalisation():
     np.testing.assert_allclose(np.abs(F[0, 0, 0]), 1.0 / 3.0, atol=1e-12)
 
 
-@pytest.mark.parametrize("shape", ROT_SHAPES)
+@pytest.mark.parametrize("shape", CUBIC_SHAPES)
 def test_structure_factor_rotation_equivariance_about_z(shape):
-    """Rotating the structure 90 deg about z moves peaks from kx to ky (Nx == Ny)."""
+    """Rotating the structure 90 deg about z moves peaks from kx to ky (Nx == Ny).
+
+    Parametrised over CUBIC_SHAPES: every cubic shape in the test suite
+    satisfies the two preconditions (Nx == Ny and Nx divisible by 3)
+    without introducing a new shape list. The rotation property itself
+    only requires Nx == Ny.
+    """
     Nx, Ny, Nz = shape
-    assert Nx == Ny, f"ROT_SHAPES must have Nx == Ny, got {shape}"
-    if Nx % 3 != 0:
-        pytest.skip(f"Nx={Nx} not divisible by 3")
+    assert Nx == Ny, f"CUBIC_SHAPES must have Nx == Ny, got {shape}"
     ordered_x = perfect_oof_chain(shape, phase=2, direction="x")
     ordered_y = perfect_oof_chain(shape, phase=2, direction="y")
 
@@ -467,8 +469,6 @@ def test_structure_factor_all_directions_ordered_has_cubic_symmetry(shape):
     """All three sublattices OOF, same phase: peaks on all three Cartesian axes."""
     Nx, Ny, Nz = shape
     assert Nx == Ny == Nz, f"CUBIC_SHAPES must be cubic, got {shape}"
-    if Nx % 3 != 0:
-        pytest.skip(f"Nx={Nx} not divisible by 3")
     ax = perfect_oof_chain(shape, phase=2, direction="x")
     ay = perfect_oof_chain(shape, phase=2, direction="y")
     az = perfect_oof_chain(shape, phase=2, direction="z")
