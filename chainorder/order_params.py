@@ -9,6 +9,8 @@ to ``(N, N, N)``.
 """
 import numpy as np
 
+from chainorder.decompose import SublatticeOccupation
+
 
 def chain_fft(anion_direction: np.ndarray) -> np.ndarray:
     """Discrete Fourier transform along each chain.
@@ -220,82 +222,62 @@ def inter_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:
     return numer / power
 
 
-def structure_factor(
-    anion_x: np.ndarray,
-    anion_y: np.ndarray,
-    anion_z: np.ndarray,
-) -> np.ndarray:
+def structure_factor(occupation: SublatticeOccupation) -> np.ndarray:
     """Anion-sublattice 3D structure factor in a canonical `(kx, ky, kz)` frame.
 
-    Each of the three edge-midpoint sublattices is Fourier-transformed,
-    transposed into canonical `(kx, ky, kz)` axes, and summed with the
-    half-cell phase offset of its own sublattice relative to the cation
-    corner (x-anions sit at `+a/2` along x, y-anions at `+a/2` along y,
-    z-anions at `+a/2` along z). The result is the full coherent structure
-    factor of the flagged-species occupation, with unit form factor.
+    Takes a `SublatticeOccupation` and returns its coherent structure
+    factor with unit form factor. The three edge-midpoint sublattices
+    are Fourier-transformed together (one 3D FFT of the primary
+    `occupation` array along axes 1-3, which are already canonical
+    `(kx, ky, kz)` by construction) and summed with the half-cell phase
+    offset of each sublattice relative to the cation corner (x-anions at
+    `+a/2` along x, y-anions at `+a/2` along y, z-anions at `+a/2` along
+    z).
 
     Rotation-equivariant: a lattice-symmetry rotation of the input
-    structure produces the correspondingly rotated output. Anisotropy is
-    preserved -- chains ordered along one direction give peaks on the
-    matching reciprocal axis.
+    structure produces the correspondingly rotated output. Anisotropy
+    is preserved -- chains ordered along one direction give peaks on
+    the matching reciprocal axis.
 
     Args:
-        anion_x: x-chain occupation, shape `(Ny, Nz, Nx)`. Axes are
-            `(j, k, i)`: real-space lateral positions `(j, k)` in the
-            `(y, z)` plane, position `i` along the x chain.
-        anion_y: y-chain occupation, shape `(Nx, Nz, Ny)`. Axes are
-            `(i, k, j)`: lateral positions `(i, k)` in the `(x, z)` plane,
-            position `j` along the y chain.
-        anion_z: z-chain occupation, shape `(Nx, Ny, Nz)`. Axes are
-            `(i, j, k)`: lateral positions `(i, j)` in the `(x, y)` plane,
-            position `k` along the z chain.
+        occupation: `SublatticeOccupation` whose `.occupation` has shape
+            `(3, Nx, Ny, Nz)`. Axis 0 indexes the three sublattices
+            (x, y, z); axes 1-3 are xyz grid coordinates.
 
     Returns:
         Complex array of shape `(Nx, Ny, Nz)` with axes `(kx, ky, kz)`.
         `|F|**2` is proportional to the kinematic diffuse scattering
         intensity at wavevector `(kx / Nx, ky / Ny, kz / Nz)` in
-        reciprocal lattice units. Normalised so that a fully F-occupied anion sublattice
-        gives `F[0, 0, 0] = 3` (three F per unit cell) and a single-
-        sublattice period-3 ordering gives `|F| = 1/3` at its peak.
+        reciprocal lattice units. Normalised so that a fully F-occupied
+        anion sublattice gives `F[0, 0, 0] = 3` (three F per unit cell)
+        and a single-sublattice period-3 ordering gives `|F| = 1/3` at
+        its peak.
+
+    Raises:
+        ValueError: If `occupation.occupation` is not a 4-D array with
+            leading axis of length 3.
 
     Notes:
-        Per-sublattice contributions can be recovered by zeroing the other
-        two arrays: e.g. `structure_factor(ax, np.zeros_like(ax),
-        np.zeros_like(ax))` returns the x-sublattice contribution alone.
-        For per-chain (not cross-chain) analysis use `chain_fft` instead.
+        Per-sublattice contributions can be recovered by constructing a
+        `SublatticeOccupation` with zeros on the other two layers:
+        e.g. `SublatticeOccupation(occupation=np.stack([ax_layer,
+        np.zeros_like(ax_layer), np.zeros_like(ax_layer)]))` returns
+        the x-sublattice contribution alone, where `ax_layer` is the
+        xyz-coord `(Nx, Ny, Nz)` x-sublattice array. For per-chain
+        (not cross-chain) analysis use `chain_fft` on the appropriate
+        chain-layout view (e.g. `occupation.x`).
     """
-    # Derive (Nx, Ny, Nz) from the three per-direction input shapes.
-    # anion_x axes (j, k, i) -> (Ny, Nz, Nx)
-    # anion_y axes (i, k, j) -> (Nx, Nz, Ny)
-    # anion_z axes (i, j, k) -> (Nx, Ny, Nz)
-    if anion_x.ndim != 3 or anion_y.ndim != 3 or anion_z.ndim != 3:
+    sub = occupation.occupation
+    if sub.ndim != 4 or sub.shape[0] != 3:
         raise ValueError(
-            f"All three sublattice arrays must be 3-D; got shapes "
-            f"{anion_x.shape}, {anion_y.shape}, {anion_z.shape}."
+            f"SublatticeOccupation.occupation must have shape "
+            f"(3, Nx, Ny, Nz); got shape {sub.shape}."
         )
-    Ny_x, Nz_x, Nx_x = anion_x.shape
-    Nx_y, Nz_y, Ny_y = anion_y.shape
-    Nx_z, Ny_z, Nz_z = anion_z.shape
-    if (
-        Nx_x != Nx_y or Nx_x != Nx_z
-        or Ny_x != Ny_y or Ny_x != Ny_z
-        or Nz_x != Nz_y or Nz_x != Nz_z
-    ):
-        raise ValueError(
-            f"Sublattice arrays have inconsistent per-direction shapes: "
-            f"x={anion_x.shape} (expects (Ny, Nz, Nx)), "
-            f"y={anion_y.shape} (expects (Nx, Nz, Ny)), "
-            f"z={anion_z.shape} (expects (Nx, Ny, Nz))."
-        )
-    Nx, Ny, Nz = Nx_x, Ny_x, Nz_x
+    _, Nx, Ny, Nz = sub.shape
 
-    # FFT each sublattice and transpose to canonical (kx, ky, kz).
-    # anion_x axes (ky, kz, kx) -> (kx, ky, kz)
-    # anion_y axes (kx, kz, ky) -> (kx, ky, kz)
-    # anion_z axes (kx, ky, kz) already canonical
-    f_x = np.fft.fftn(anion_x).transpose(2, 0, 1)
-    f_y = np.fft.fftn(anion_y).transpose(0, 2, 1)
-    f_z = np.fft.fftn(anion_z)
+    # 3D FFT per sublattice along axes (1, 2, 3). The xyz-coord data is
+    # already in canonical (kx, ky, kz) order, so no transpose is needed.
+    f = np.fft.fftn(sub, axes=(1, 2, 3))                    # (3, Nx, Ny, Nz)
 
     # Half-unit-cell spatial offset of each sublattice along its own axis.
     kx = np.arange(Nx)
@@ -305,4 +287,4 @@ def structure_factor(
     phase_y = np.exp(-1j * np.pi * ky[None, :, None] / Ny)
     phase_z = np.exp(-1j * np.pi * kz[None, None, :] / Nz)
 
-    return (f_x * phase_x + f_y * phase_y + f_z * phase_z) / (Nx * Ny * Nz)
+    return (f[0] * phase_x + f[1] * phase_y + f[2] * phase_z) / (Nx * Ny * Nz)
