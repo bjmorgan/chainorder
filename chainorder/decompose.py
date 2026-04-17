@@ -324,13 +324,14 @@ def _build_indices(
     # Per-axis wrap of the integer part of scaled coords.
     coord = (half_rounded // 2) % np.asarray(shape, dtype=np.int64)
 
-    # The loop writes to `indices[direction, i, j, k]` uniformly regardless
-    # of direction, so it is a natural vectorisation target (left loopy
-    # pending a separate change; the vectorised form would be bit-identical).
-    for atom_idx in anion_atoms:
-        direction = Direction(int(np.argmax(is_half[atom_idx])))
-        i, j, k = int(coord[atom_idx, 0]), int(coord[atom_idx, 1]), int(coord[atom_idx, 2])
-        indices[direction, i, j, k] = atom_idx
+    # Each anion has exactly one half-integer axis (= its chain direction)
+    # and writes to `indices[direction, i, j, k]`. Vectorised fancy-index
+    # write: last-write-wins under duplicate indices matches the Python
+    # loop's overwrite semantics, so a rounding-collision failure still
+    # leaves some slot unfilled and is caught by the `-1` check below.
+    directions = np.argmax(is_half[anion_atoms], axis=1)                # (n_anions,)
+    ijk = coord[anion_atoms]                                            # (n_anions, 3)
+    indices[directions, ijk[:, 0], ijk[:, 1], ijk[:, 2]] = anion_atoms
 
     if np.any(indices == -1):
         missing = np.argwhere(indices == -1)
