@@ -10,9 +10,6 @@ from tests._fixtures import (
 )
 
 
-ROT_SHAPES: list[tuple[int, int, int]] = [(3, 3, 3), (6, 6, 6), (4, 4, 6)]
-# Nx == Ny; used by the 90-deg-about-z rotation-equivariance test.
-
 CUBIC_SHAPES: list[tuple[int, int, int]] = [(3, 3, 3), (6, 6, 6)]
 # Cubic; used by tests that physically require equal axes.
 
