@@ -23,6 +23,9 @@ ICC_ROT_SHAPES: list[tuple[int, int, int]] = [(3, 3, 3), (6, 6, 6), (3, 4, 6)]
 # Nx divisible by 3 (required by rotating_phase analytical identity);
 # lateral non-cubic in the (3, 4, 6) case.
 
+OFOF_SHAPES: list[tuple[int, int, int]] = [(3, 3, 4), (6, 6, 6), (2, 4, 6)]
+# Nz even; used by period-2 (OFOF) tests along the chain direction.
+
 
 @pytest.mark.parametrize("shape", ICC_SHAPES)
 def test_chain_fft_perfect_oof_peaks_at_period_3(shape):
@@ -53,12 +56,10 @@ def test_chain_fft_perfect_oof_other_components_zero(shape):
     np.testing.assert_allclose(fft[..., Nz // 2], 0, atol=1e-12)
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", OFOF_SHAPES)
 def test_chain_fft_perfect_ofof_peaks_at_period_2(shape):
     """Perfect OFOF chain (Nz even): |phi| peaks at k = Nz/2."""
     Nx, Ny, Nz = shape
-    if Nz % 2 != 0:
-        pytest.skip(f"Nz={Nz} not even")
     arr = perfect_ofof_chain(shape, direction="z")
     fft = order_params.chain_fft(arr)
     k = Nz // 2
@@ -120,12 +121,10 @@ def test_motif_counts_perfect_oof_window_3(shape):
         assert cls not in counts or np.all(counts[cls] == 0)
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", OFOF_SHAPES)
 def test_motif_counts_perfect_ofof_window_2(shape):
     """Perfect OFOF chain: all length-2 windows are (0, 1); total Nz per chain."""
     Nx, Ny, Nz = shape
-    if Nz % 2 != 0:
-        pytest.skip(f"Nz={Nz} not even")
     arr = perfect_ofof_chain(shape, direction="z")
     counts = order_params.motif_counts(arr, window_length=2)
     assert (0, 1) in counts
@@ -262,12 +261,10 @@ def test_along_chain_correlation_all_zero(shape):
     np.testing.assert_allclose(g, 0, atol=1e-12)
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", OFOF_SHAPES)
 def test_along_chain_correlation_perfect_ofof(shape):
     """Perfect OFOF (mean 1/2): g(0) = g(2) = 1/4, g(1) = g(3) = -1/4."""
     Nx, Ny, Nz = shape
-    if Nz % 2 != 0:
-        pytest.skip(f"Nz={Nz} not even")
     arr = perfect_ofof_chain(shape, direction="z")
     g = order_params.along_chain_correlation(arr)
     # <s_i s_{i+0}> = <s^2> = <s> = 1/2 (binary). 1/2 - (1/2)^2 = 1/4.
