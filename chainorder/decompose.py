@@ -1,4 +1,4 @@
-"""Decompose on-lattice ReO3-type supercells into chain arrays."""
+"""Decompose on-lattice ReO3-type supercells into a sublattice occupation."""
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import IntEnum
@@ -122,8 +122,8 @@ class SublatticeOccupation:
                 `(0.5, 0.5, 0.5)` corresponds to body-centred cations. Each
                 component must lie in `[0.0, 1.0)`; values outside this range
                 raise.
-            species: Element symbol to flag as 1 in the output arrays. Default
-                `"F"`; all other anion species are flagged 0.
+            species: Element symbol to flag as 1 in the output occupation.
+                Default `"F"`; all other anion species are flagged 0.
 
         Returns:
             A SublatticeOccupation whose primary field .occupation has shape
@@ -427,4 +427,11 @@ def _apply_indices(
             f"species={species!r} not found on any anion site. "
             f"Anion species present: {present}."
         )
+    # Make the buffer read-only so that SublatticeOccupation's
+    # @dataclass(frozen=True) immutability extends to the underlying
+    # ndarray. Without this an accidental `result.occupation[...] = x`
+    # (or a mutation through one of the transpose views) would silently
+    # corrupt the decomposition. Transpose views share the base's
+    # writeable flag, so .x/.y/.z inherit the read-only state.
+    is_species.flags.writeable = False
     return SublatticeOccupation(occupation=is_species)

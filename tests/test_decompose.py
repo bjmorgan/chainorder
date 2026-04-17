@@ -39,6 +39,29 @@ def test_sublattice_occupation_exposes_primary_and_chain_views():
     np.testing.assert_array_equal(az, occ.z)
 
 
+def test_sublattice_occupation_from_atoms_is_immutable():
+    """The occupation array (and its transpose views) produced by
+    `from_atoms` is read-only, so that `@dataclass(frozen=True)`'s
+    immutability extends to the underlying buffer."""
+    shape = (3, 3, 3)
+    ax_in, ay_in, az_in = dummy_chain_arrays(shape)
+    atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
+    occ = SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
+
+    # The primary buffer is read-only: direct mutation raises.
+    with pytest.raises(ValueError, match="read-only"):
+        occ.occupation[0, 0, 0, 0] = 0
+
+    # Chain-layout views are transpose views of the primary buffer, so
+    # they inherit the read-only flag -- mutating .x/.y/.z raises too.
+    with pytest.raises(ValueError, match="read-only"):
+        occ.x[0, 0, 0] = 0
+    with pytest.raises(ValueError, match="read-only"):
+        occ.y[0, 0, 0] = 0
+    with pytest.raises(ValueError, match="read-only"):
+        occ.z[0, 0, 0] = 0
+
+
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_orthorhombic_round_trip(shape):
     """Round-trip for arbitrary orthorhombic shape."""

@@ -258,14 +258,8 @@ def structure_factor(occupation: SublatticeOccupation) -> np.ndarray:
             leading axis of length 3.
 
     Notes:
-        Per-sublattice contributions can be recovered by constructing a
-        `SublatticeOccupation` with zeros on the other two layers:
-        e.g. `SublatticeOccupation(occupation=np.stack([ax_layer,
-        np.zeros_like(ax_layer), np.zeros_like(ax_layer)]))` returns
-        the x-sublattice contribution alone, where `ax_layer` is the
-        xyz-coord `(Nx, Ny, Nz)` x-sublattice array. For per-chain
-        (not cross-chain) analysis use `chain_fft` on the appropriate
-        chain-layout view (e.g. `occupation.x`).
+        For per-chain (not cross-chain) analysis use `chain_fft` on the
+        appropriate chain-layout view (e.g. `occupation.x`).
     """
     sub = occupation.occupation
     if sub.ndim != 4 or sub.shape[0] != 3:
