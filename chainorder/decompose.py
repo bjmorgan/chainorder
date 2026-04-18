@@ -6,6 +6,7 @@ from functools import lru_cache
 
 import numpy as np
 from ase import Atoms
+from ase.data import atomic_numbers, chemical_symbols
 
 
 _TOL = 1e-6
@@ -143,16 +144,16 @@ class SublatticeOccupation:
                 for the given shape; any atom off-lattice (including the
                 common case of passing the wrong `origin` -- e.g.
                 `(0.0, 0.0, 0.0)` on a body-centred structure); `species`
-                absent from all anion sites; or a slot collision during
-                assignment.
+                not a known chemical element symbol (e.g. `"Fluorine"` or
+                `"f"` instead of `"F"`); `species` absent from all anion
+                sites; or a slot collision during assignment.
         """
         shape = _validate_shape(N)
         origin = _validate_origin(origin)
         positions = np.ascontiguousarray(atoms.positions, dtype=np.float64)
         cell = np.ascontiguousarray(atoms.cell.array, dtype=np.float64)
         indices = _indices_cached(positions.tobytes(), cell.tobytes(), shape, origin)
-        symbols = np.array(atoms.get_chemical_symbols())
-        return _apply_indices(symbols, indices, species)
+        return _apply_indices(atoms.numbers, indices, species)
 
 
 def _validate_shape(
@@ -402,14 +403,14 @@ def _build_indices(
 
 
 def _apply_indices(
-    symbols: np.ndarray,
+    numbers: np.ndarray,
     indices: np.ndarray,
     species: str,
 ) -> SublatticeOccupation:
     """Apply a cached index map to produce a `SublatticeOccupation`.
 
     Args:
-        symbols: Chemical symbols per atom, shape (n_atoms,).
+        numbers: Atomic numbers per atom, shape (n_atoms,).
         indices: Cached decomposition map from `_build_indices`,
             shape (3, Nx, Ny, Nz), xyz-coord indexed.
         species: Element symbol to flag as 1. Others are flagged 0.
@@ -419,10 +420,16 @@ def _apply_indices(
         shape-(3, Nx, Ny, Nz) xyz-coord integer array. Chain-layout
         views are exposed via the `.x`, `.y`, `.z` properties.
     """
-    anion_symbols = symbols[indices]
-    is_species = (anion_symbols == species).astype(np.int64)
+    try:
+        target_z = atomic_numbers[species]
+    except KeyError:
+        raise ValueError(
+            f"species={species!r} is not a known chemical element symbol."
+        )
+    anion_numbers = numbers[indices]
+    is_species = (anion_numbers == target_z).astype(np.int64)
     if is_species.sum() == 0:
-        present = sorted(set(anion_symbols.ravel().tolist()))
+        present = sorted({chemical_symbols[int(z)] for z in anion_numbers.ravel()})
         raise ValueError(
             f"species={species!r} not found on any anion site. "
             f"Anion species present: {present}."
