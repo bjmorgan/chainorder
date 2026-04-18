@@ -2,8 +2,6 @@
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import IntEnum
-from functools import lru_cache
-
 import numpy as np
 from ase import Atoms
 from ase.data import atomic_numbers, chemical_symbols
@@ -152,7 +150,7 @@ class SublatticeOccupation:
         origin = _validate_origin(origin)
         positions = np.ascontiguousarray(atoms.positions, dtype=np.float64)
         cell = np.ascontiguousarray(atoms.cell.array, dtype=np.float64)
-        indices = _indices_cached(positions.tobytes(), cell.tobytes(), shape, origin)
+        indices = _get_indices(positions, cell, shape, origin)
         return _apply_indices(atoms.numbers, indices, species)
 
 
@@ -198,8 +196,8 @@ def _validate_origin(
 ) -> tuple[float, float, float]:
     """Normalise `origin` to a float 3-tuple with each component in `[0, 1)`.
 
-    The float cast ensures `(0, 0, 0)` and `(0.0, 0.0, 0.0)` share an
-    lru_cache key. Out-of-range values are rejected because they would
+    The float cast ensures `(0, 0, 0)` and `(0.0, 0.0, 0.0)` share a
+    cache key. Out-of-range values are rejected because they would
     wrap silently through the `frac % 1.0` operation in `_build_indices`;
     the caller should wrap deliberately if they want periodic equivalence.
     """
@@ -212,24 +210,74 @@ def _validate_origin(
     return (a, b, c)
 
 
-@lru_cache(maxsize=1)
-def _indices_cached(
-    positions_bytes: bytes,
-    cell_bytes: bytes,
+# Single-entry decomposition cache. Content-equality check via
+# `np.array_equal`, so trajectory frames with identical positions reuse
+# the cached index map without paying the O(n_atoms) cost of hashing the
+# positions buffer. Private module state: tests use `_clear_cache()`.
+_CacheKey = tuple[
+    np.ndarray,                    # positions_copy
+    np.ndarray,                    # cell_copy
+    tuple[int, int, int],          # shape
+    tuple[float, float, float],    # origin
+]
+_cache_key: _CacheKey | None = None
+_cache_indices: np.ndarray | None = None
+
+
+def _cache_lookup(
+    positions: np.ndarray,
+    cell: np.ndarray,
+    shape: tuple[int, int, int],
+    origin: tuple[float, float, float],
+) -> np.ndarray | None:
+    """Return the cached indices for these inputs, or None if not cached.
+
+    Compares positions and cell content with `np.array_equal`; compares
+    shape and origin by tuple equality. The comparison runs at
+    `memcmp` speed in NumPy's C layer and is roughly 5x cheaper than
+    hashing the positions bytes at typical supercell sizes.
+    """
+    if _cache_indices is None or _cache_key is None:
+        return None
+    cached_positions, cached_cell, cached_shape, cached_origin = _cache_key
+    if cached_shape != shape or cached_origin != origin:
+        return None
+    if cached_positions.shape != positions.shape:
+        return None
+    if not np.array_equal(cached_positions, positions):
+        return None
+    if not np.array_equal(cached_cell, cell):
+        return None
+    return _cache_indices
+
+
+def _get_indices(
+    positions: np.ndarray,
+    cell: np.ndarray,
     shape: tuple[int, int, int],
     origin: tuple[float, float, float],
 ) -> np.ndarray:
-    """Cache the decomposition map for one ``(positions, cell, shape, origin)`` key.
+    """Return cached indices for these inputs, rebuilding on cache miss.
 
-    ``positions`` and ``cell`` are passed as raw bytes so that the key is
-    hashable and compares by full-precision binary content. Single-entry cache
-    (``maxsize=1``) is sufficient for trajectory analysis: repeated calls with
-    identical inputs reuse the cached indices, and the first call after any
-    change rebuilds.
+    On cache miss, stores an independent copy of positions and cell so
+    that later in-place mutation by the caller does not silently
+    invalidate the cache.
     """
-    positions = np.frombuffer(positions_bytes, dtype=np.float64).reshape(-1, 3)
-    cell = np.frombuffer(cell_bytes, dtype=np.float64).reshape(3, 3)
-    return _build_indices(positions, cell, shape, origin)
+    global _cache_key, _cache_indices
+    cached = _cache_lookup(positions, cell, shape, origin)
+    if cached is not None:
+        return cached
+    indices = _build_indices(positions, cell, shape, origin)
+    _cache_key = (positions.copy(), cell.copy(), shape, origin)
+    _cache_indices = indices
+    return indices
+
+
+def _clear_cache() -> None:
+    """Reset the decomposition cache. Useful in tests."""
+    global _cache_key, _cache_indices
+    _cache_key = None
+    _cache_indices = None
 
 
 def _build_indices(
