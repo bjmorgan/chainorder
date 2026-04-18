@@ -210,15 +210,13 @@ def _validate_origin(
     return (a, b, c)
 
 
-# Single-entry decomposition cache. Content-equality check via
-# `np.array_equal`, so trajectory frames with identical positions reuse
-# the cached index map without paying the O(n_atoms) cost of hashing the
-# positions buffer. Private module state: tests use `_clear_cache()`.
+# Single-entry decomposition cache keyed by content equality. Private
+# module state; tests use `_clear_cache()`.
 _CacheKey = tuple[
-    np.ndarray,                    # positions_copy
-    np.ndarray,                    # cell_copy
-    tuple[int, int, int],          # shape
-    tuple[float, float, float],    # origin
+    np.ndarray,
+    np.ndarray,
+    tuple[int, int, int],
+    tuple[float, float, float],
 ]
 _cache_key: _CacheKey | None = None
 _cache_indices: np.ndarray | None = None
@@ -230,19 +228,11 @@ def _cache_lookup(
     shape: tuple[int, int, int],
     origin: tuple[float, float, float],
 ) -> np.ndarray | None:
-    """Return the cached indices for these inputs, or None if not cached.
-
-    Compares positions and cell content with `np.array_equal`; compares
-    shape and origin by tuple equality. The comparison runs at
-    `memcmp` speed in NumPy's C layer and is roughly 5x cheaper than
-    hashing the positions bytes at typical supercell sizes.
-    """
+    """Return the cached indices for these inputs, or None if not cached."""
     if _cache_indices is None or _cache_key is None:
         return None
     cached_positions, cached_cell, cached_shape, cached_origin = _cache_key
     if cached_shape != shape or cached_origin != origin:
-        return None
-    if cached_positions.shape != positions.shape:
         return None
     if not np.array_equal(cached_positions, positions):
         return None
