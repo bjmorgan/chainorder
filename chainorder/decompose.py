@@ -211,35 +211,65 @@ def _validate_origin(
     return (a, b, c)
 
 
-# Single-entry decomposition cache keyed by content equality. Private
-# module state; tests use `_clear_cache()`.
-_CacheKey = tuple[
-    np.ndarray,
-    np.ndarray,
-    tuple[int, int, int],
-    tuple[float, float, float],
-]
-_cache_key: _CacheKey | None = None
-_cache_indices: np.ndarray | None = None
+class _DecompositionCache:
+    """Single-entry decomposition cache keyed by content equality.
+
+    Stores an independent copy of positions and cell on `store`, so
+    later in-place mutation by the caller does not silently invalidate
+    the cache.
+    """
+
+    __slots__ = ("_key", "_indices")
+
+    _Key = tuple[
+        np.ndarray,
+        np.ndarray,
+        tuple[int, int, int],
+        tuple[float, float, float],
+    ]
+
+    def __init__(self) -> None:
+        self._key: "_DecompositionCache._Key | None" = None
+        self._indices: np.ndarray | None = None
+
+    def lookup(
+        self,
+        positions: np.ndarray,
+        cell: np.ndarray,
+        shape: tuple[int, int, int],
+        origin: tuple[float, float, float],
+    ) -> np.ndarray | None:
+        """Return the cached indices for these inputs, or None if not cached."""
+        if self._indices is None or self._key is None:
+            return None
+        cached_positions, cached_cell, cached_shape, cached_origin = self._key
+        if cached_shape != shape or cached_origin != origin:
+            return None
+        if not np.array_equal(cached_positions, positions):
+            return None
+        if not np.array_equal(cached_cell, cell):
+            return None
+        return self._indices
+
+    def store(
+        self,
+        positions: np.ndarray,
+        cell: np.ndarray,
+        shape: tuple[int, int, int],
+        origin: tuple[float, float, float],
+        indices: np.ndarray,
+    ) -> None:
+        """Store `indices` under a copy of the input key."""
+        self._key = (positions.copy(), cell.copy(), shape, origin)
+        self._indices = indices
+
+    def clear(self) -> None:
+        """Reset the cache. Useful in tests."""
+        self._key = None
+        self._indices = None
 
 
-def _cache_lookup(
-    positions: np.ndarray,
-    cell: np.ndarray,
-    shape: tuple[int, int, int],
-    origin: tuple[float, float, float],
-) -> np.ndarray | None:
-    """Return the cached indices for these inputs, or None if not cached."""
-    if _cache_indices is None or _cache_key is None:
-        return None
-    cached_positions, cached_cell, cached_shape, cached_origin = _cache_key
-    if cached_shape != shape or cached_origin != origin:
-        return None
-    if not np.array_equal(cached_positions, positions):
-        return None
-    if not np.array_equal(cached_cell, cell):
-        return None
-    return _cache_indices
+_cache = _DecompositionCache()
 
 
 def _get_indices(
@@ -248,27 +278,13 @@ def _get_indices(
     shape: tuple[int, int, int],
     origin: tuple[float, float, float],
 ) -> np.ndarray:
-    """Return cached indices for these inputs, rebuilding on cache miss.
-
-    On cache miss, stores an independent copy of positions and cell so
-    that later in-place mutation by the caller does not silently
-    invalidate the cache.
-    """
-    global _cache_key, _cache_indices
-    cached = _cache_lookup(positions, cell, shape, origin)
+    """Return cached indices for these inputs, rebuilding on cache miss."""
+    cached = _cache.lookup(positions, cell, shape, origin)
     if cached is not None:
         return cached
     indices = _build_indices(positions, cell, shape, origin)
-    _cache_key = (positions.copy(), cell.copy(), shape, origin)
-    _cache_indices = indices
+    _cache.store(positions, cell, shape, origin, indices)
     return indices
-
-
-def _clear_cache() -> None:
-    """Reset the decomposition cache. Useful in tests."""
-    global _cache_key, _cache_indices
-    _cache_key = None
-    _cache_indices = None
 
 
 def _build_indices(

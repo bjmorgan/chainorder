@@ -322,7 +322,7 @@ def test_decompose_caches_indices_across_calls(monkeypatch, shape):
 
     monkeypatch.setattr(dm, "_build_indices", counting_build)
     # Clear any existing cache (from prior tests in the same session)
-    dm._clear_cache()
+    dm._cache.clear()
 
     ax_in, ay_in, az_in = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
@@ -347,7 +347,7 @@ def test_decompose_rebuilds_when_n_changes(monkeypatch):
         return original_build(*args, **kwargs)
 
     monkeypatch.setattr(dm, "_build_indices", counting_build)
-    dm._clear_cache()
+    dm._cache.clear()
 
     for shape in [(3, 3, 3), (6, 6, 6), (2, 3, 4), (3, 3, 4)]:
         ax_in, ay_in, az_in = dummy_chain_arrays(shape)
@@ -370,7 +370,7 @@ def test_decompose_rebuilds_when_single_axis_changes(monkeypatch):
         return original_build(*args, **kwargs)
 
     monkeypatch.setattr(dm, "_build_indices", counting_build)
-    dm._clear_cache()
+    dm._cache.clear()
 
     for shape in [(3, 3, 3), (3, 3, 6), (3, 6, 3), (6, 3, 3)]:
         ax, ay, az = dummy_chain_arrays(shape)
@@ -395,7 +395,7 @@ def test_decompose_scalar_and_tuple_N_equivalent(monkeypatch):
         return original_build(*args, **kwargs)
 
     monkeypatch.setattr(dm, "_build_indices", counting_build)
-    dm._clear_cache()
+    dm._cache.clear()
 
     N = 3
     ax_in = perfect_oof_chain(N, phase=2)
@@ -435,7 +435,7 @@ def test_decompose_detects_in_place_position_mutation(monkeypatch, shape):
         return original_build(*args, **kwargs)
 
     monkeypatch.setattr(dm, "_build_indices", counting_build)
-    dm._clear_cache()
+    dm._cache.clear()
 
     ax_in, ay_in, az_in = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
@@ -469,7 +469,7 @@ def test_decompose_cache_hit_with_new_symbols_same_positions(monkeypatch, shape)
         return original_build(*args, **kwargs)
 
     monkeypatch.setattr(dm, "_build_indices", counting_build)
-    dm._clear_cache()
+    dm._cache.clear()
 
     ax_first, _, az_first = dummy_chain_arrays(shape)
     ay_first = oof_or_zero(shape, phase=0, direction="y")
