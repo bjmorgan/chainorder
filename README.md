@@ -1,3 +1,5 @@
+[![CI](https://github.com/bjmorgan/chainorder/actions/workflows/ci.yml/badge.svg)](https://github.com/bjmorgan/chainorder/actions/workflows/ci.yml)
+
 # chainorder
 
 Chain decomposition and order parameters for ReO3-type anion ordering.
