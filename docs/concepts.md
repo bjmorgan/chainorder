@@ -265,11 +265,6 @@ for atoms in iread("trajectory.xyz"):
 spectra = np.array(spectra)          # (n_frames, Ny, Nz, Nx)
 ```
 
-If the trajectory shares a fixed lattice (MC species-swap moves,
-for example), `from_atoms` caches its position-to-sublattice
-mapping across frames, giving roughly an order of magnitude
-speedup per frame at typical supercell sizes.
-
 ### Iterating over directions
 
 Any per-chain observable can be run on each of the three chain
