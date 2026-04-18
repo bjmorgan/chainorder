@@ -2,8 +2,6 @@
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import IntEnum
-from functools import lru_cache
-
 import numpy as np
 from ase import Atoms
 from ase.data import atomic_numbers, chemical_symbols
@@ -140,8 +138,9 @@ class SublatticeOccupation:
                 length, non-integer tuple element, or non-positive tuple
                 element); `origin` component outside `[0.0, 1.0)`; cell
                 containing non-finite values, not orthorhombic, or
-                non-positive on the diagonal; wrong cation or anion count
-                for the given shape; any atom off-lattice (including the
+                non-positive on the diagonal; positions containing
+                non-finite values; wrong cation or anion count for the
+                given shape; any atom off-lattice (including the
                 common case of passing the wrong `origin` -- e.g.
                 `(0.0, 0.0, 0.0)` on a body-centred structure); `species`
                 not a known chemical element symbol (e.g. `"Fluorine"` or
@@ -152,7 +151,7 @@ class SublatticeOccupation:
         origin = _validate_origin(origin)
         positions = np.ascontiguousarray(atoms.positions, dtype=np.float64)
         cell = np.ascontiguousarray(atoms.cell.array, dtype=np.float64)
-        indices = _indices_cached(positions.tobytes(), cell.tobytes(), shape, origin)
+        indices = _get_indices(positions, cell, shape, origin)
         return _apply_indices(atoms.numbers, indices, species)
 
 
@@ -198,8 +197,8 @@ def _validate_origin(
 ) -> tuple[float, float, float]:
     """Normalise `origin` to a float 3-tuple with each component in `[0, 1)`.
 
-    The float cast ensures `(0, 0, 0)` and `(0.0, 0.0, 0.0)` share an
-    lru_cache key. Out-of-range values are rejected because they would
+    The float cast ensures `(0, 0, 0)` and `(0.0, 0.0, 0.0)` share a
+    cache key. Out-of-range values are rejected because they would
     wrap silently through the `frac % 1.0` operation in `_build_indices`;
     the caller should wrap deliberately if they want periodic equivalence.
     """
@@ -212,24 +211,64 @@ def _validate_origin(
     return (a, b, c)
 
 
-@lru_cache(maxsize=1)
-def _indices_cached(
-    positions_bytes: bytes,
-    cell_bytes: bytes,
+# Single-entry decomposition cache keyed by content equality. Private
+# module state; tests use `_clear_cache()`.
+_CacheKey = tuple[
+    np.ndarray,
+    np.ndarray,
+    tuple[int, int, int],
+    tuple[float, float, float],
+]
+_cache_key: _CacheKey | None = None
+_cache_indices: np.ndarray | None = None
+
+
+def _cache_lookup(
+    positions: np.ndarray,
+    cell: np.ndarray,
+    shape: tuple[int, int, int],
+    origin: tuple[float, float, float],
+) -> np.ndarray | None:
+    """Return the cached indices for these inputs, or None if not cached."""
+    if _cache_indices is None or _cache_key is None:
+        return None
+    cached_positions, cached_cell, cached_shape, cached_origin = _cache_key
+    if cached_shape != shape or cached_origin != origin:
+        return None
+    if not np.array_equal(cached_positions, positions):
+        return None
+    if not np.array_equal(cached_cell, cell):
+        return None
+    return _cache_indices
+
+
+def _get_indices(
+    positions: np.ndarray,
+    cell: np.ndarray,
     shape: tuple[int, int, int],
     origin: tuple[float, float, float],
 ) -> np.ndarray:
-    """Cache the decomposition map for one ``(positions, cell, shape, origin)`` key.
+    """Return cached indices for these inputs, rebuilding on cache miss.
 
-    ``positions`` and ``cell`` are passed as raw bytes so that the key is
-    hashable and compares by full-precision binary content. Single-entry cache
-    (``maxsize=1``) is sufficient for trajectory analysis: repeated calls with
-    identical inputs reuse the cached indices, and the first call after any
-    change rebuilds.
+    On cache miss, stores an independent copy of positions and cell so
+    that later in-place mutation by the caller does not silently
+    invalidate the cache.
     """
-    positions = np.frombuffer(positions_bytes, dtype=np.float64).reshape(-1, 3)
-    cell = np.frombuffer(cell_bytes, dtype=np.float64).reshape(3, 3)
-    return _build_indices(positions, cell, shape, origin)
+    global _cache_key, _cache_indices
+    cached = _cache_lookup(positions, cell, shape, origin)
+    if cached is not None:
+        return cached
+    indices = _build_indices(positions, cell, shape, origin)
+    _cache_key = (positions.copy(), cell.copy(), shape, origin)
+    _cache_indices = indices
+    return indices
+
+
+def _clear_cache() -> None:
+    """Reset the decomposition cache. Useful in tests."""
+    global _cache_key, _cache_indices
+    _cache_key = None
+    _cache_indices = None
 
 
 def _build_indices(
@@ -261,12 +300,19 @@ def _build_indices(
     Nx, Ny, Nz = shape
     N_per_axis = np.asarray(shape, dtype=np.float64)        # (3,)
     N_max = int(max(shape))
-    # Finite check on the whole matrix: NaN anywhere in `cell` would propagate
-    # silently through the orthorhombic threshold (`NaN > x` is False) and
-    # the on-lattice check, giving platform-dependent int garbage downstream.
+    # Finite checks. NaN in positions or cell would propagate silently
+    # through the on-lattice threshold (`NaN > x` is False) and through
+    # `.astype(np.int64)`, giving platform-dependent int garbage in the
+    # decomposition output.
     if not np.all(np.isfinite(cell)):
         raise ValueError(
             f"Cell must contain only finite values, got {cell}."
+        )
+    if not np.all(np.isfinite(positions)):
+        bad = int(np.argmax(~np.isfinite(positions).all(axis=1)))
+        raise ValueError(
+            f"Positions must contain only finite values; atom {bad} has "
+            f"positions {positions[bad]}."
         )
 
     # Orthorhombic check: off-diagonal elements must be zero (within tolerance

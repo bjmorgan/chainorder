@@ -257,6 +257,26 @@ def test_decompose_raises_on_non_finite_in_cell(row, col, bad_value):
         SublatticeOccupation.from_atoms(atoms, N=N, species="F")
 
 
+@pytest.mark.parametrize("axis", [0, 1, 2])
+@pytest.mark.parametrize("bad_value", [np.nan, np.inf, -np.inf])
+def test_decompose_raises_on_non_finite_in_positions(axis, bad_value):
+    """NaN or +/-inf anywhere in a position coordinate must raise.
+
+    Without this check, `.astype(np.int64)` on a NaN-propagated scaled
+    coordinate produces platform-dependent garbage that flows into the
+    decomposition silently.
+    """
+    N = 3
+    ax = perfect_oof_chain(N, phase=2)
+    ay = perfect_oof_chain(N, phase=2)
+    az = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax, ay, az)
+    # Corrupt one coordinate of one atom.
+    atoms.positions[len(atoms) // 2, axis] = bad_value
+    with pytest.raises(ValueError, match="Positions must contain only finite"):
+        SublatticeOccupation.from_atoms(atoms, N=N, species="F")
+
+
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_raises_on_non_orthorhombic_cell(shape):
     """Triclinic cell should raise ValueError (out of scope for v1)."""
@@ -302,7 +322,7 @@ def test_decompose_caches_indices_across_calls(monkeypatch, shape):
 
     monkeypatch.setattr(dm, "_build_indices", counting_build)
     # Clear any existing cache (from prior tests in the same session)
-    dm._indices_cached.cache_clear()
+    dm._clear_cache()
 
     ax_in, ay_in, az_in = dummy_chain_arrays(shape)
     atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
@@ -327,7 +347,7 @@ def test_decompose_rebuilds_when_n_changes(monkeypatch):
         return original_build(*args, **kwargs)
 
     monkeypatch.setattr(dm, "_build_indices", counting_build)
-    dm._indices_cached.cache_clear()
+    dm._clear_cache()
 
     for shape in [(3, 3, 3), (6, 6, 6), (2, 3, 4), (3, 3, 4)]:
         ax_in, ay_in, az_in = dummy_chain_arrays(shape)
@@ -350,7 +370,7 @@ def test_decompose_rebuilds_when_single_axis_changes(monkeypatch):
         return original_build(*args, **kwargs)
 
     monkeypatch.setattr(dm, "_build_indices", counting_build)
-    dm._indices_cached.cache_clear()
+    dm._clear_cache()
 
     for shape in [(3, 3, 3), (3, 3, 6), (3, 6, 3), (6, 3, 3)]:
         ax, ay, az = dummy_chain_arrays(shape)
@@ -360,13 +380,22 @@ def test_decompose_rebuilds_when_single_axis_changes(monkeypatch):
     assert call_count["n"] == 4
 
 
-def test_decompose_scalar_and_tuple_N_equivalent():
+def test_decompose_scalar_and_tuple_N_equivalent(monkeypatch):
     """SublatticeOccupation.from_atoms(atoms, N=3, species="F") and
     SublatticeOccupation.from_atoms(atoms, N=(3, 3, 3), species="F") produce
     bit-identical SublatticeOccupations and hit the same cache entry."""
     import importlib
     dm = importlib.import_module("chainorder.decompose")
-    dm._indices_cached.cache_clear()
+
+    call_count = {"n": 0}
+    original_build = dm._build_indices
+
+    def counting_build(*args, **kwargs):
+        call_count["n"] += 1
+        return original_build(*args, **kwargs)
+
+    monkeypatch.setattr(dm, "_build_indices", counting_build)
+    dm._clear_cache()
 
     N = 3
     ax_in = perfect_oof_chain(N, phase=2)
@@ -375,15 +404,53 @@ def test_decompose_scalar_and_tuple_N_equivalent():
     atoms = build_nbo2f(N, ax_in, ay_in, az_in)
 
     out_scalar = SublatticeOccupation.from_atoms(atoms, N=3, species="F")
-    hits_after_scalar = dm._indices_cached.cache_info().hits
     out_tuple = SublatticeOccupation.from_atoms(atoms, N=(3, 3, 3), species="F")
-    hits_after_tuple = dm._indices_cached.cache_info().hits
 
     np.testing.assert_array_equal(out_scalar.x, out_tuple.x)
     np.testing.assert_array_equal(out_scalar.y, out_tuple.y)
     np.testing.assert_array_equal(out_scalar.z, out_tuple.z)
-    assert hits_after_tuple == hits_after_scalar + 1, (
-        "Tuple form should hit the cache entry populated by the scalar form."
+    assert call_count["n"] == 1, (
+        f"Scalar and tuple N should share one cache entry; "
+        f"_build_indices was called {call_count['n']} times."
+    )
+
+
+@pytest.mark.parametrize("shape", SHAPES)
+def test_decompose_detects_in_place_position_mutation(monkeypatch, shape):
+    """In-place mutation of `atoms.positions` must invalidate the cache.
+
+    The cache stores a copy of positions on miss, not a reference, so
+    that a later call with mutated positions compares as different and
+    triggers a rebuild. Without that copy, the cached reference would
+    be equal to itself and the rebuild would be skipped silently.
+    """
+    import importlib
+    dm = importlib.import_module("chainorder.decompose")
+
+    call_count = {"n": 0}
+    original_build = dm._build_indices
+
+    def counting_build(*args, **kwargs):
+        call_count["n"] += 1
+        return original_build(*args, **kwargs)
+
+    monkeypatch.setattr(dm, "_build_indices", counting_build)
+    dm._clear_cache()
+
+    ax_in, ay_in, az_in = dummy_chain_arrays(shape)
+    atoms = build_nbo2f(shape, ax_in, ay_in, az_in)
+    SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
+
+    # Shift every atom by one lattice vector along x. Positions differ
+    # in value; under periodic wrap they still map to on-lattice sites,
+    # so the second decomposition succeeds -- but from a distinct
+    # positions buffer state, which the cache must notice.
+    atoms.positions[:] += np.array([3.90, 0.0, 0.0])
+    SublatticeOccupation.from_atoms(atoms, N=shape, species="O")
+
+    assert call_count["n"] == 2, (
+        f"In-place position mutation should trigger a rebuild; "
+        f"_build_indices was called {call_count['n']} times."
     )
 
 
@@ -402,7 +469,7 @@ def test_decompose_cache_hit_with_new_symbols_same_positions(monkeypatch, shape)
         return original_build(*args, **kwargs)
 
     monkeypatch.setattr(dm, "_build_indices", counting_build)
-    dm._indices_cached.cache_clear()
+    dm._clear_cache()
 
     ax_first, _, az_first = dummy_chain_arrays(shape)
     ay_first = oof_or_zero(shape, phase=0, direction="y")
