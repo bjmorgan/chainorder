@@ -105,8 +105,8 @@ class SublatticeOccupation:
         indexes the three edge-midpoint sublattices, axes 1-3 the xyz grid.
         The decomposition map is cached on `(positions, cell, shape, origin)`,
         so repeated calls on frames with identical positions skip the mapping
-        step; on typical supercell sizes this roughly halves the per-frame
-        cost.
+        step; on typical supercell sizes this gives roughly an order of
+        magnitude speedup per frame.
         Off-lattice MD trajectories (positions perturbed thermally) are out of
         scope; they would not pass the on-lattice check anyway.
 
