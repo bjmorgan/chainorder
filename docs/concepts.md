@@ -150,36 +150,34 @@ Output is a real array of length `N_chain` giving `g(r)` for
 
 ### motif_counts
 
-Categorises local patterns of species flags within a moving
-window of length `w`. `motif_counts` returns
-a per-chain count of how often each distinct pattern appears,
-grouping together patterns that differ only by rotation -- `OOF`,
-`OFO`, and `FOO` all form one class.
+Slides a window of length `w` along each chain (with periodic wrap)
+and tallies how often each distinct bit pattern of length `w`
+appears. Each pattern is keyed by its bit tuple, e.g. `(0, 1, 0)`
+for `OFO`.
 
 Three concrete cases, all with `w = 3`:
 
-- A period-3 ordered chain (`...O-O-F-O-O-F-...`): every window is a
-  rotation of `OOF`, so the dictionary has a single entry (the
-  `OOF`-class) with count `N_chain` per chain.
+- A period-3 ordered chain (`...O-O-F-O-O-F-...`): the three windows
+  produced as the window slides are `(0, 0, 1)`, `(0, 1, 0)`, and
+  `(1, 0, 0)`, each appearing `N_chain / 3` times.
 - A period-2 alternating chain (`...O-F-O-F-...`, `N_chain` even):
-  half the windows are rotations of `OFO` (the `OOF`-class) and the
-  other half are rotations of `FOF` (the `OFF`-class), so the
-  dictionary has two entries each with count `N_chain / 2` per
-  chain.
-- A random chain: many classes appear, with counts distributed
-  across the possibilities.
+  windows alternate between `(0, 1, 0)` and `(1, 0, 1)`, each
+  appearing `N_chain / 2` times.
+- A random chain: pattern counts follow `Binomial(w, p_F)` on
+  F-count — patterns with the same number of Fs have equal expected
+  counts.
 
-Returns a dictionary: keys are canonical motif tuples (the
-lexicographically smallest rotation, e.g. `(0, 0, 1)` for the
-`OOF`-class) and values are integer arrays of shape
-`(N_lat0, N_lat1)` giving the count of that motif per chain. Every
-chain position is the start of exactly one window (with periodic
-wrap), so the counts per chain sum to `N_chain` regardless of `w`.
+Returns a dictionary: keys are bit tuples of the patterns that
+appear, values are integer arrays of shape `(N_lat0, N_lat1)`
+giving per-chain counts. Patterns absent from the input are not
+present in the dictionary. Every chain position is the start of
+exactly one window, so the counts per chain sum to `N_chain`
+regardless of `w`.
 
-`window_length` should be kept small in practice: the
-canonicalisation table grows as `2 ** w`, so values past `w = 8` or
-so start to become expensive in memory; see the docstring for the
-details.
+`window_length` is internally bit-packed into an int64, giving an
+upper bound of `w <= 62`. The practical upper bound is
+`w <= N_chain` (larger windows would wrap around the chain and
+alias).
 
 ### inter_chain_correlation
 

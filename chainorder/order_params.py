@@ -37,10 +37,14 @@ def motif_counts(
     *,
     window_length: int,
 ) -> dict[tuple[int, ...], np.ndarray]:
-    """Count cyclic-equivalence classes of length-`window_length` motifs per chain.
+    """Count length-`window_length` motifs per chain.
 
-    Windows wrap periodically: every chain position is the start of exactly one
-    window, so counts per chain sum to `N_chain` regardless of `window_length`.
+    Slides a window of length `window_length` along each chain (with
+    periodic wrap) and tallies how often each distinct window pattern
+    appears. Every chain position is the start of exactly one window, so
+    counts per chain sum to `N_chain` regardless of `window_length`.
+
+    Each motif is keyed by its bit tuple, e.g. `(0, 1, 0)` for `OFO`.
 
     Args:
         anion_direction: Binary species array for a single chain direction,
@@ -49,28 +53,19 @@ def motif_counts(
             ``1 <= window_length <= min(N_chain, 62)`` (see `Raises`).
 
     Returns:
-        Dictionary mapping each canonical motif tuple to an integer array
-        of shape `(N_lat0, N_lat1)` giving per-chain counts.
+        Dictionary mapping each distinct motif tuple that appears in the
+        input to an integer array of shape `(N_lat0, N_lat1)` giving
+        per-chain counts. Motif tuples not present in the input are
+        absent from the dictionary.
 
     Raises:
         TypeError: If `window_length` is not an integer, or if
             `anion_direction` has a non-integer dtype (floats silently
             truncate through the bit-packing cast).
-        ValueError: If `window_length` is outside the valid range. The upper
-            bound of 62 is a hard limit of the int64 bit-packing used for
-            the canonicalisation table; the upper bound of `N_chain` is geometric
+        ValueError: If `window_length` is outside the valid range. The
+            upper bound of 62 is a hard limit of the int64 bit-packing
+            used internally; the upper bound of `N_chain` is geometric
             (larger windows would wrap around the chain and alias).
-
-    Notes:
-        The canonicalisation table is materialised as an int64 array of
-        size `2 ** window_length` plus a Python dict of the same number
-        of tuple entries. This grows exponentially: `window_length = 20`
-        costs ~8 MB for the array alone plus tens of megabytes for the
-        dict; `window_length = 25` already pushes a gigabyte;
-        `window_length = 30` is far beyond a laptop's RAM in practice,
-        even though the int64 algorithmic ceiling is 62. Keep
-        `window_length` small (typical <= 8) and treat anything past
-        ~15 as requiring deliberate consideration.
     """
     if not isinstance(window_length, (int, np.integer)):
         raise TypeError(
@@ -80,8 +75,8 @@ def motif_counts(
     if not np.issubdtype(anion_direction.dtype, np.integer):
         raise TypeError(
             f"anion_direction must have integer dtype for motif counting; "
-            f"got {anion_direction.dtype}. The bit-packed canonicalisation "
-            f"truncates floats silently and would give wrong answers."
+            f"got {anion_direction.dtype}. The bit-packed encoding truncates "
+            f"floats silently and would give wrong answers."
         )
     N = anion_direction.shape[-1]
     w = int(window_length)
@@ -94,8 +89,7 @@ def motif_counts(
         )
     if w > 62:
         raise ValueError(
-            f"window_length ({w}) exceeds the int64 bit-packing limit of 62. "
-            f"This limit is well above any realistic chain length."
+            f"window_length ({w}) exceeds the int64 bit-packing limit of 62."
         )
 
     # Build (N_chain, w) index array: windows[start, offset] -> position in chain.
@@ -108,24 +102,11 @@ def motif_counts(
     powers = (1 << np.arange(w)).astype(np.int64)                      # (w,)
     encoded = (windows.astype(np.int64) * powers).sum(axis=-1)         # (N_lat0, N_lat1, N_chain)
 
-    # Precompute canonical code for every possible window value.
-    n_codes = 1 << w
-    canon_code = np.empty(n_codes, dtype=np.int64)
-    canon_tuple: dict[int, tuple[int, ...]] = {}
-    for code in range(n_codes):
-        bits = tuple((code >> i) & 1 for i in range(w))
-        best = min(bits[i:] + bits[:i] for i in range(w))
-        best_code = sum(b * (1 << i) for i, b in enumerate(best))
-        canon_code[code] = best_code
-        canon_tuple[best_code] = best
-
-    canonical_encoded = canon_code[encoded]                            # (N_lat0, N_lat1, N_chain)
-
     # Tally occurrences per chain (sum over the last axis, which is `start`).
     counts: dict[tuple[int, ...], np.ndarray] = {}
-    for code in np.unique(canonical_encoded):
-        mask = (canonical_encoded == code)
-        counts[canon_tuple[int(code)]] = mask.sum(axis=-1).astype(np.int64)
+    for code in np.unique(encoded):
+        bits = tuple((int(code) >> i) & 1 for i in range(w))
+        counts[bits] = (encoded == code).sum(axis=-1).astype(np.int64)
     return counts
 
 

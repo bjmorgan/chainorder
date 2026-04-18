@@ -105,27 +105,29 @@ def test_chain_fft_normalisation_period_3_in_N_9():
 
 @pytest.mark.parametrize("shape", ICC_SHAPES)
 def test_motif_counts_perfect_oof_window_3(shape):
-    """Perfect OOF chain: all length-3 windows are cyclic class (0, 0, 1),
-    total Nz per chain."""
+    """Perfect OOF chain of length Nz (Nz divisible by 3): the three rotation-
+    distinct length-3 windows (0,0,1), (0,1,0), (1,0,0) each appear Nz/3 times."""
     Nx, Ny, Nz = shape
     arr = perfect_oof_chain(shape, phase=2, direction="z")
     counts = order_params.motif_counts(arr, window_length=3)
-    # One F in every triplet -> canonical (0, 0, 1)
-    assert (0, 0, 1) in counts
-    np.testing.assert_array_equal(counts[(0, 0, 1)], np.full((Nx, Ny), Nz))
-    # Other classes should be absent or zero
-    for cls in [(0, 0, 0), (0, 1, 1), (1, 1, 1)]:
-        assert cls not in counts or np.all(counts[cls] == 0)
+    expected = np.full((Nx, Ny), Nz // 3)
+    for motif in [(0, 0, 1), (0, 1, 0), (1, 0, 0)]:
+        assert motif in counts, f"Expected motif {motif} in counts"
+        np.testing.assert_array_equal(counts[motif], expected)
+    assert set(counts) == {(0, 0, 1), (0, 1, 0), (1, 0, 0)}
 
 
 @pytest.mark.parametrize("shape", OFOF_SHAPES)
 def test_motif_counts_perfect_ofof_window_2(shape):
-    """Perfect OFOF chain: all length-2 windows are (0, 1); total Nz per chain."""
+    """Perfect OFOF chain of length Nz (Nz even): length-2 windows alternate
+    between (0, 1) and (1, 0), each appearing Nz/2 times."""
     Nx, Ny, Nz = shape
     arr = perfect_ofof_chain(shape, direction="z")
     counts = order_params.motif_counts(arr, window_length=2)
-    assert (0, 1) in counts
-    np.testing.assert_array_equal(counts[(0, 1)], np.full((Nx, Ny), Nz))
+    expected = np.full((Nx, Ny), Nz // 2)
+    assert set(counts) == {(0, 1), (1, 0)}
+    np.testing.assert_array_equal(counts[(0, 1)], expected)
+    np.testing.assert_array_equal(counts[(1, 0)], expected)
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -149,20 +151,20 @@ def test_motif_counts_total_equals_N(shape):
     np.testing.assert_array_equal(total, np.full((Nx, Ny), Nz))
 
 
-def test_motif_counts_cyclic_rotations_collapse():
-    """Three chains with F at positions 0, 1, 2 all canonicalise to (0, 0, 1)."""
+def test_motif_counts_invariant_under_chain_rotation():
+    """Three chains that are cyclic rotations of each other share identical
+    motif counts: per-chain, each rotation-distinct length-3 motif appears once."""
     N = 3
     arr = np.zeros((N, N, N), dtype=int)
     arr[0, 0, 0] = 1   # chain (0, 0): [1, 0, 0]
     arr[0, 1, 1] = 1   # chain (0, 1): [0, 1, 0]
     arr[0, 2, 2] = 1   # chain (0, 2): [0, 0, 1]
     counts = order_params.motif_counts(arr, window_length=3)
-    # Each of these chains has one F per period; every window canonicalises
-    # to (0, 0, 1). Per-chain count should be N=3 for each of them.
-    assert (0, 0, 1) in counts
-    assert counts[(0, 0, 1)][0, 0] == N
-    assert counts[(0, 0, 1)][0, 1] == N
-    assert counts[(0, 0, 1)][0, 2] == N
+    for motif in [(1, 0, 0), (0, 1, 0), (0, 0, 1)]:
+        assert motif in counts
+        assert counts[motif][0, 0] == 1
+        assert counts[motif][0, 1] == 1
+        assert counts[motif][0, 2] == 1
 
 
 @pytest.mark.parametrize("shape", ICC_SHAPES)
@@ -179,15 +181,17 @@ def test_motif_counts_window_length_1_is_single_site(shape):
 
 @pytest.mark.parametrize("shape", ICC_SHAPES)
 def test_motif_counts_window_length_equal_N_is_full_chain(shape):
-    """window_length == Nz: every rotation of the chain is in the same class."""
+    """window_length == Nz: the Nz sliding windows are the Nz cyclic rotations
+    of the chain. For a period-3 chain of length Nz, three distinct rotations
+    appear, each Nz/3 times; total Nz."""
     Nx, Ny, Nz = shape
-    arr = perfect_oof_chain(shape, phase=2, direction="z")   # chain [0,0,1,...]
+    arr = perfect_oof_chain(shape, phase=2, direction="z")
     counts = order_params.motif_counts(arr, window_length=Nz)
-    # All Nz sliding windows rotate through the same Nz-tuple cyclically, so
-    # every window collapses to the same canonical form; counts sum to Nz.
     total = sum(counts.values())
     np.testing.assert_array_equal(total, np.full((Nx, Ny), Nz))
-    assert len(counts) == 1
+    assert len(counts) == 3
+    for motif_count in counts.values():
+        np.testing.assert_array_equal(motif_count, np.full((Nx, Ny), Nz // 3))
 
 
 def test_motif_counts_rejects_invalid_window_lengths():
@@ -225,13 +229,19 @@ def test_motif_counts_per_chain_distinct_for_mixed_patterns():
         if i % 2 == 1:
             arr[3:, :, i] = 1
     counts = order_params.motif_counts(arr, window_length=3)
-    # OOF: all N windows are (0, 0, 1); zero of (0, 1, 1).
-    # OFOF chain [0,1,0,1,0,1]: windows (0,1,0) and (1,0,1) alternate, giving
-    # N/2 of each canonical class (0, 0, 1) and (0, 1, 1).
-    np.testing.assert_array_equal(counts[(0, 0, 1)][:3, :], N)
-    np.testing.assert_array_equal(counts[(0, 0, 1)][3:, :], N // 2)
-    np.testing.assert_array_equal(counts[(0, 1, 1)][:3, :], 0)
-    np.testing.assert_array_equal(counts[(0, 1, 1)][3:, :], N // 2)
+    # OOF chain (period 3): windows cycle through (0,0,1), (0,1,0), (1,0,0),
+    # each appearing N/3 times. Other motifs absent.
+    for motif in [(0, 0, 1), (0, 1, 0), (1, 0, 0)]:
+        np.testing.assert_array_equal(counts[motif][:3, :], N // 3)
+    # OFOF chain (period 2): windows alternate (0, 1, 0) and (1, 0, 1),
+    # each appearing N/2 times.
+    np.testing.assert_array_equal(counts[(0, 1, 0)][3:, :], N // 2)
+    np.testing.assert_array_equal(counts[(1, 0, 1)][3:, :], N // 2)
+    # Motifs from the other chain block must be zero where they don't occur.
+    np.testing.assert_array_equal(counts[(0, 0, 1)][3:, :], 0)
+    np.testing.assert_array_equal(counts[(1, 0, 0)][3:, :], 0)
+    # OFOF motif (1, 0, 1) should not appear in the OOF block.
+    assert counts[(1, 0, 1)][:3, :].sum() == 0
 
 
 @pytest.mark.parametrize("shape", ICC_SHAPES)

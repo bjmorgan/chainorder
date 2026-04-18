@@ -11,7 +11,7 @@ object in an orthorhombic supercell, decomposes the three edge-midpoint
 anion sublattices into per-direction chains, and exposes a small set of
 order parameters computed either over the full 3D occupation (coherent
 structure factor) or along individual chain directions (Fourier spectra,
-pair correlation, cyclic motif counts, inter-chain correlation).
+pair correlation, motif counts, inter-chain correlation).
 
 ## Installation
 
@@ -49,7 +49,7 @@ occ = SublatticeOccupation.from_atoms(atoms, N=6, species="F")  # supercell size
 sf = order_params.structure_factor(occ)                      # 3D structure factor
 spectrum = order_params.chain_fft(occ.x)                     # per x-chain FFT
 g_r = order_params.along_chain_correlation(occ.x)            # g(r) along x-chains
-counts = order_params.motif_counts(occ.x, window_length=3)   # cyclic motif tallies
+counts = order_params.motif_counts(occ.x, window_length=3)   # length-3 motif tallies
 G = order_params.inter_chain_correlation(occ.x, period=3)   # period-p phase correlation
 ```
 
@@ -72,8 +72,8 @@ A full trajectory is just a loop: per frame, build a
   - `chain_fft(arr)` -- discrete Fourier transform along each chain.
   - `along_chain_correlation(arr)` -- pair correlation g(r) along chains,
     grand-averaged over the chain-plane.
-  - `motif_counts(arr, window_length=N)` -- tallies of cyclic-equivalent
-    length-`window_length` motifs per chain.
+  - `motif_counts(arr, window_length=N)` -- per-chain counts of
+    each distinct length-`window_length` bit pattern.
   - `inter_chain_correlation(arr, period=p)` -- spatial autocorrelation
     of the period-`p` Fourier component across the chain plane.
 
