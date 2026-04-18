@@ -92,15 +92,11 @@ def motif_frequencies(
     powers = 1 << np.arange(w, dtype=np.int64)                         # (w,)
     codes = windows.astype(np.int64) @ powers                          # (N_lat0, N_lat1, N_chain)
 
-    # The alphabet [0, 2^w) is known in full, so we iterate it directly
-    # and keep only codes that appear. `.any()` short-circuits absent
-    # patterns at essentially zero cost.
     frequencies: dict[tuple[int, ...], np.ndarray] = {}
-    for c in range(1 << w):
+    for c in np.unique(codes):
         mask = codes == c
-        if mask.any():
-            bits = tuple((c >> k) & 1 for k in range(w))
-            frequencies[bits] = mask.mean(axis=-1)
+        bits = tuple((int(c) >> k) & 1 for k in range(w))
+        frequencies[bits] = mask.mean(axis=-1)
     return frequencies
 
 
