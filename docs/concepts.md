@@ -176,7 +176,7 @@ input are not present in the dictionary. Every chain position is
 the start of exactly one window, so per-chain frequencies sum to
 `1` regardless of `w`.
 
-`window_length` must satisfy `1 <= window_length <= min(N_chain, 62)`.
+`window_length` must be between `1` and `N_chain`.
 
 ### inter_chain_correlation
 

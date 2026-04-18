@@ -50,8 +50,8 @@ def motif_frequencies(
     Args:
         anion_direction: Binary species array for a single chain direction,
             shape `(N_lat0, N_lat1, N_chain)`. Last axis is along-chain.
-        window_length: Length of the sliding window. Must satisfy
-            ``1 <= window_length <= min(N_chain, 62)``.
+        window_length: Length of the sliding window. Must be between 1
+            and `N_chain` inclusive.
 
     Returns:
         Dictionary mapping each distinct motif tuple that appears in the
@@ -62,8 +62,7 @@ def motif_frequencies(
     Raises:
         TypeError: If `window_length` is not an integer, or if
             `anion_direction` has a non-integer dtype.
-        ValueError: If `window_length` falls outside
-            ``[1, min(N_chain, 62)]``.
+        ValueError: If `window_length < 1` or `window_length > N_chain`.
     """
     if not isinstance(window_length, (int, np.integer)):
         raise TypeError(
@@ -86,8 +85,11 @@ def motif_frequencies(
             f"wrap around the chain and alias. Use window_length <= N."
         )
     if w > 62:
+        # Safety net: the internal bit-packing uses int64. w > 62 never
+        # arises for realistic chain lengths (it would require N_chain > 62,
+        # already well beyond typical MC/DFT supercells).
         raise ValueError(
-            f"window_length ({w}) exceeds the int64 bit-packing limit of 62."
+            f"window_length ({w}) is too large for this implementation."
         )
 
     # Build (N_chain, w) index array: windows[start, offset] -> position in chain.
