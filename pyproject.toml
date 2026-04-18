@@ -17,3 +17,12 @@ include = ["chainorder*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["chainorder"]
+strict = true
+# NumPy's type stubs declare many operations (notably FFT returns) as
+# `Any`, which triggers no-any-return spuriously. Keep the rest of
+# `strict` active and disable this one check across the project.
+warn_return_any = false
