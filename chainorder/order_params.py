@@ -84,30 +84,23 @@ def motif_frequencies(
             f"window_length ({w}) exceeds chain length N={N}; windows would "
             f"wrap around the chain and alias. Use window_length <= N."
         )
-    if w > 62:
-        # Safety net: the internal bit-packing uses int64. w > 62 never
-        # arises for realistic chain lengths (it would require N_chain > 62,
-        # already well beyond typical MC/DFT supercells).
-        raise ValueError(
-            f"window_length ({w}) is too large for this implementation."
-        )
-
     # Build (N_chain, w) index array: windows[start, offset] -> position in chain.
     window_idx = (np.arange(N)[:, None] + np.arange(w)[None, :]) % N   # (N_chain, w)
 
     # windows[j, k, start, offset] = anion_direction[j, k, (start + offset) % N_chain]
     windows = anion_direction[:, :, window_idx]                        # (N_lat0, N_lat1, N_chain, w)
 
-    # Encode each window as an integer: bit i = value at offset i.
-    powers = (1 << np.arange(w)).astype(np.int64)                      # (w,)
-    encoded = (windows.astype(np.int64) * powers).sum(axis=-1)         # (N_lat0, N_lat1, N_chain)
+    # Find unique length-w patterns and their index per window position.
+    N_lat0, N_lat1 = windows.shape[:2]
+    flat = windows.reshape(-1, w)                                      # (N_lat0 * N_lat1 * N, w)
+    unique_rows, inverse = np.unique(flat, axis=0, return_inverse=True)
+    inverse = inverse.reshape(N_lat0, N_lat1, N)
 
-    # Frequency of each motif per chain: (count of that code along the last
-    # axis) divided by N (the number of windows per chain).
+    # Per-chain frequency of each pattern.
     frequencies: dict[tuple[int, ...], np.ndarray] = {}
-    for code in np.unique(encoded):
-        bits = tuple((int(code) >> i) & 1 for i in range(w))
-        frequencies[bits] = (encoded == code).mean(axis=-1)
+    for idx, row in enumerate(unique_rows):
+        bits = tuple(int(x) for x in row)
+        frequencies[bits] = (inverse == idx).mean(axis=-1)
     return frequencies
 
 

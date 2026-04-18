@@ -164,10 +164,7 @@ Three concrete cases, all with `w = 3`:
   windows alternate between `(0, 1, 0)` and `(1, 0, 1)`, each at
   frequency `1/2`.
 - A random chain: each pattern with `k_F` Fs has expected frequency
-  `p_F^{k_F} * (1 - p_F)^{w - k_F}` (all patterns with the same
-  number of Fs have equal expected frequency). Summing those
-  frequencies over patterns of equal `k_F` recovers the binomial
-  distribution `Binomial(w, p_F)` on F-count.
+  `p_F^{k_F} * (1 - p_F)^{w - k_F}`.
 
 Returns a dictionary: keys are bit tuples of the patterns that
 appear, values are float arrays of shape `(N_lat0, N_lat1)` giving
