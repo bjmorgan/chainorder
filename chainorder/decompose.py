@@ -102,11 +102,10 @@ class SublatticeOccupation:
         exactly one axis, integer in the other two) and assigns it to a slot in
         a 3D sublattice occupation array of shape (3, Nx, Ny, Nz) -- axis 0
         indexes the three edge-midpoint sublattices, axes 1-3 the xyz grid.
-        The assignment is cached across calls with identical
-        `(positions, cell, shape, origin)`, so re-analysing the same frame
-        (e.g. with a different `species`) is free after the first call, and
-        analysing an MC trajectory of occupation swaps -- where atom positions
-        are identical frame-to-frame -- pays the decomposition cost only once.
+        The decomposition map is cached on `(positions, cell, shape, origin)`,
+        so repeated calls on frames with identical positions skip the mapping
+        step; on typical supercell sizes this roughly halves the per-frame
+        cost.
         Off-lattice MD trajectories (positions perturbed thermally) are out of
         scope; they would not pass the on-lattice check anyway.
 

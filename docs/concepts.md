@@ -267,7 +267,8 @@ spectra = np.array(spectra)          # (n_frames, Ny, Nz, Nx)
 
 If the trajectory shares a fixed lattice (MC species-swap moves,
 for example), `from_atoms` caches its position-to-sublattice
-mapping and pays the decomposition cost only on the first frame.
+mapping across frames, roughly halving the per-frame cost at
+typical supercell sizes.
 
 ### Iterating over directions
 
