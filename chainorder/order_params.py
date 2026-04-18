@@ -84,23 +84,23 @@ def motif_frequencies(
             f"window_length ({w}) exceeds chain length N={N}; windows would "
             f"wrap around the chain and alias. Use window_length <= N."
         )
-    # Build (N_chain, w) index array: windows[start, offset] -> position in chain.
+    # Bit-pack each length-w window into a single integer code: bit k
+    # of the code is the species flag at offset k within the window, so
+    # each window maps to a code in [0, 2^w).
     window_idx = (np.arange(N)[:, None] + np.arange(w)[None, :]) % N   # (N_chain, w)
-
-    # windows[j, k, start, offset] = anion_direction[j, k, (start + offset) % N_chain]
     windows = anion_direction[:, :, window_idx]                        # (N_lat0, N_lat1, N_chain, w)
+    powers = 1 << np.arange(w, dtype=np.int64)                         # (w,)
+    codes = windows.astype(np.int64) @ powers                          # (N_lat0, N_lat1, N_chain)
 
-    # Find unique length-w patterns and their index per window position.
-    N_lat0, N_lat1 = windows.shape[:2]
-    flat = windows.reshape(-1, w)                                      # (N_lat0 * N_lat1 * N, w)
-    unique_rows, inverse = np.unique(flat, axis=0, return_inverse=True)
-    inverse = inverse.reshape(N_lat0, N_lat1, N)
-
-    # Per-chain frequency of each pattern.
+    # The alphabet [0, 2^w) is known in full, so we iterate it directly
+    # and keep only codes that appear. `.any()` short-circuits absent
+    # patterns at essentially zero cost.
     frequencies: dict[tuple[int, ...], np.ndarray] = {}
-    for idx, row in enumerate(unique_rows):
-        bits = tuple(int(x) for x in row)
-        frequencies[bits] = (inverse == idx).mean(axis=-1)
+    for c in range(1 << w):
+        mask = codes == c
+        if mask.any():
+            bits = tuple((c >> k) & 1 for k in range(w))
+            frequencies[bits] = mask.mean(axis=-1)
     return frequencies
 
 
