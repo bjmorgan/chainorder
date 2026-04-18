@@ -32,17 +32,18 @@ def chain_fft(anion_direction: np.ndarray) -> np.ndarray:
     return np.fft.fft(anion_direction, axis=-1) / N
 
 
-def motif_counts(
+def motif_frequencies(
     anion_direction: np.ndarray,
     *,
     window_length: int,
 ) -> dict[tuple[int, ...], np.ndarray]:
-    """Count length-`window_length` motifs per chain.
+    """Per-chain frequency of each length-`window_length` motif.
 
     Slides a window of length `window_length` along each chain (with
-    periodic wrap) and tallies how often each distinct window pattern
-    appears. Every chain position is the start of exactly one window, so
-    counts per chain sum to `N_chain` regardless of `window_length`.
+    periodic wrap) and returns the fraction of windows matching each
+    distinct bit pattern, per chain. Every chain position is the start
+    of exactly one window, so the returned frequencies per chain sum to
+    `1` regardless of `window_length`.
 
     Each motif is keyed by its bit tuple, e.g. `(0, 1, 0)` for `OFO`.
 
@@ -50,22 +51,19 @@ def motif_counts(
         anion_direction: Binary species array for a single chain direction,
             shape `(N_lat0, N_lat1, N_chain)`. Last axis is along-chain.
         window_length: Length of the sliding window. Must satisfy
-            ``1 <= window_length <= min(N_chain, 62)`` (see `Raises`).
+            ``1 <= window_length <= min(N_chain, 62)``.
 
     Returns:
         Dictionary mapping each distinct motif tuple that appears in the
-        input to an integer array of shape `(N_lat0, N_lat1)` giving
-        per-chain counts. Motif tuples not present in the input are
-        absent from the dictionary.
+        input to a float array of shape `(N_lat0, N_lat1)` giving the
+        per-chain frequency (value in `[0, 1]`). Motif tuples not
+        present in the input are absent from the dictionary.
 
     Raises:
         TypeError: If `window_length` is not an integer, or if
-            `anion_direction` has a non-integer dtype (floats silently
-            truncate through the bit-packing cast).
-        ValueError: If `window_length` is outside the valid range. The
-            upper bound of 62 is a hard limit of the int64 bit-packing
-            used internally; the upper bound of `N_chain` is geometric
-            (larger windows would wrap around the chain and alias).
+            `anion_direction` has a non-integer dtype.
+        ValueError: If `window_length` falls outside
+            ``[1, min(N_chain, 62)]``.
     """
     if not isinstance(window_length, (int, np.integer)):
         raise TypeError(
@@ -102,12 +100,13 @@ def motif_counts(
     powers = (1 << np.arange(w)).astype(np.int64)                      # (w,)
     encoded = (windows.astype(np.int64) * powers).sum(axis=-1)         # (N_lat0, N_lat1, N_chain)
 
-    # Tally occurrences per chain (sum over the last axis, which is `start`).
-    counts: dict[tuple[int, ...], np.ndarray] = {}
+    # Frequency of each motif per chain: (count of that code along the last
+    # axis) divided by N (the number of windows per chain).
+    frequencies: dict[tuple[int, ...], np.ndarray] = {}
     for code in np.unique(encoded):
         bits = tuple((int(code) >> i) & 1 for i in range(w))
-        counts[bits] = (encoded == code).sum(axis=-1).astype(np.int64)
-    return counts
+        frequencies[bits] = (encoded == code).mean(axis=-1)
+    return frequencies
 
 
 def along_chain_correlation(anion_direction: np.ndarray) -> np.ndarray:

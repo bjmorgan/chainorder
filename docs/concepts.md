@@ -148,36 +148,35 @@ species (clustering); negative `g(r)` means they tend to differ.
 Output is a real array of length `N_chain` giving `g(r)` for
 `r = 0, 1, ..., N_chain - 1`, with periodic wrap.
 
-### motif_counts
+### motif_frequencies
 
 Slides a window of length `w` along each chain (with periodic wrap)
-and tallies how often each distinct bit pattern of length `w`
-appears. Each pattern is keyed by its bit tuple, e.g. `(0, 1, 0)`
-for `OFO`.
+and returns the fraction of windows matching each distinct bit
+pattern of length `w`. Each pattern is keyed by its bit tuple, e.g.
+`(0, 1, 0)` for `OFO`.
 
 Three concrete cases, all with `w = 3`:
 
 - A period-3 ordered chain (`...O-O-F-O-O-F-...`): the three windows
   produced as the window slides are `(0, 0, 1)`, `(0, 1, 0)`, and
-  `(1, 0, 0)`, each appearing `N_chain / 3` times.
+  `(1, 0, 0)`, each at frequency `1/3`.
 - A period-2 alternating chain (`...O-F-O-F-...`, `N_chain` even):
-  windows alternate between `(0, 1, 0)` and `(1, 0, 1)`, each
-  appearing `N_chain / 2` times.
-- A random chain: pattern counts follow `Binomial(w, p_F)` on
-  F-count — patterns with the same number of Fs have equal expected
-  counts.
+  windows alternate between `(0, 1, 0)` and `(1, 0, 1)`, each at
+  frequency `1/2`.
+- A random chain: each pattern with `k_F` Fs has expected frequency
+  `p_F^{k_F} * (1 - p_F)^{w - k_F}` (all patterns with the same
+  number of Fs have equal expected frequency). Summing those
+  frequencies over patterns of equal `k_F` recovers the binomial
+  distribution `Binomial(w, p_F)` on F-count.
 
 Returns a dictionary: keys are bit tuples of the patterns that
-appear, values are integer arrays of shape `(N_lat0, N_lat1)`
-giving per-chain counts. Patterns absent from the input are not
-present in the dictionary. Every chain position is the start of
-exactly one window, so the counts per chain sum to `N_chain`
-regardless of `w`.
+appear, values are float arrays of shape `(N_lat0, N_lat1)` giving
+per-chain frequencies (each in `[0, 1]`). Patterns absent from the
+input are not present in the dictionary. Every chain position is
+the start of exactly one window, so per-chain frequencies sum to
+`1` regardless of `w`.
 
-`window_length` is internally bit-packed into an int64, giving an
-upper bound of `w <= 62`. The practical upper bound is
-`w <= N_chain` (larger windows would wrap around the chain and
-alias).
+`window_length` must satisfy `1 <= window_length <= min(N_chain, 62)`.
 
 ### inter_chain_correlation
 
