@@ -6,9 +6,7 @@ Chain decomposition and order parameters for ReO3-type anion ordering.
 
 ## What this is
 
-`chainorder` is a small NumPy + ASE library for analysing anion ordering
-in MD or MC snapshots of ReO3-type solid solutions (NbO2F, TiOF2, and any
-other cubic `MX3`-topology system). It takes an on-lattice ASE `Atoms`
+`chainorder` is a small NumPy + ASE library for analysing anion ordering of ReO3-type solid solutions (NbO2F, TiOF2, and any other cubic `MX3`-topology system). It takes an on-lattice ASE `Atoms`
 object in an orthorhombic supercell, decomposes the three edge-midpoint
 anion sublattices into per-direction chains, and exposes a small set of
 order parameters computed either over the full 3D occupation (coherent
