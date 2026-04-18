@@ -257,6 +257,26 @@ def test_decompose_raises_on_non_finite_in_cell(row, col, bad_value):
         SublatticeOccupation.from_atoms(atoms, N=N, species="F")
 
 
+@pytest.mark.parametrize("axis", [0, 1, 2])
+@pytest.mark.parametrize("bad_value", [np.nan, np.inf, -np.inf])
+def test_decompose_raises_on_non_finite_in_positions(axis, bad_value):
+    """NaN or +/-inf anywhere in a position coordinate must raise.
+
+    Without this check, `.astype(np.int64)` on a NaN-propagated scaled
+    coordinate produces platform-dependent garbage that flows into the
+    decomposition silently.
+    """
+    N = 3
+    ax = perfect_oof_chain(N, phase=2)
+    ay = perfect_oof_chain(N, phase=2)
+    az = perfect_oof_chain(N, phase=2)
+    atoms = build_nbo2f(N, ax, ay, az)
+    # Corrupt one coordinate of one atom.
+    atoms.positions[len(atoms) // 2, axis] = bad_value
+    with pytest.raises(ValueError, match="Positions must contain only finite"):
+        SublatticeOccupation.from_atoms(atoms, N=N, species="F")
+
+
 @pytest.mark.parametrize("shape", SHAPES)
 def test_decompose_raises_on_non_orthorhombic_cell(shape):
     """Triclinic cell should raise ValueError (out of scope for v1)."""

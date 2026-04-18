@@ -138,8 +138,9 @@ class SublatticeOccupation:
                 length, non-integer tuple element, or non-positive tuple
                 element); `origin` component outside `[0.0, 1.0)`; cell
                 containing non-finite values, not orthorhombic, or
-                non-positive on the diagonal; wrong cation or anion count
-                for the given shape; any atom off-lattice (including the
+                non-positive on the diagonal; positions containing
+                non-finite values; wrong cation or anion count for the
+                given shape; any atom off-lattice (including the
                 common case of passing the wrong `origin` -- e.g.
                 `(0.0, 0.0, 0.0)` on a body-centred structure); `species`
                 not a known chemical element symbol (e.g. `"Fluorine"` or
@@ -299,12 +300,19 @@ def _build_indices(
     Nx, Ny, Nz = shape
     N_per_axis = np.asarray(shape, dtype=np.float64)        # (3,)
     N_max = int(max(shape))
-    # Finite check on the whole matrix: NaN anywhere in `cell` would propagate
-    # silently through the orthorhombic threshold (`NaN > x` is False) and
-    # the on-lattice check, giving platform-dependent int garbage downstream.
+    # Finite checks. NaN in positions or cell would propagate silently
+    # through the on-lattice threshold (`NaN > x` is False) and through
+    # `.astype(np.int64)`, giving platform-dependent int garbage in the
+    # decomposition output.
     if not np.all(np.isfinite(cell)):
         raise ValueError(
             f"Cell must contain only finite values, got {cell}."
+        )
+    if not np.all(np.isfinite(positions)):
+        bad = int(np.argmax(~np.isfinite(positions).all(axis=1)))
+        raise ValueError(
+            f"Positions must contain only finite values; atom {bad} has "
+            f"positions {positions[bad]}."
         )
 
     # Orthorhombic check: off-diagonal elements must be zero (within tolerance
