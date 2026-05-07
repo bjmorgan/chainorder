@@ -169,13 +169,13 @@ def inter_chain_correlation(
 
     Returns:
         Complex array of shape `(N_lat0, N_lat1)`. `G[da, db]` for
-        `da` in `0..N_lat0-1`, `db` in `0..N_lat1-1`.
+        `da` in `0..N_lat0-1`, `db` in `0..N_lat1-1`. Returns an
+        array of NaN if every chain has zero amplitude at the target
+        harmonic (the correlation is undefined).
 
     Raises:
-        ValueError: If `period` is not a positive integer, if
-            `N_chain` is not divisible by `period`, or if every chain
-            has zero amplitude at the target harmonic so that the
-            correlation is undefined.
+        ValueError: If `period` is not a positive integer, or if
+            `N_chain` is not divisible by `period`.
     """
     if not isinstance(period, (int, np.integer)) or period < 1:
         raise ValueError(
@@ -190,11 +190,7 @@ def inter_chain_correlation(
     phi = chain_fft(anion_direction)[..., N // period]                 # (N_lat0, N_lat1)
     power = float(np.mean(np.abs(phi) ** 2))
     if power == 0.0:
-        raise ValueError(
-            f"All chains have zero amplitude at period={period}; correlation "
-            f"is undefined. Inspect chain_fft(arr)[..., N_chain // period] to "
-            f"confirm."
-        )
+        return np.full(phi.shape, np.nan + 0j)
 
     # Wiener-Khinchin: IFFT2(|FFT2(phi)|^2) / (N_lat0 * N_lat1) is the
     # spatial autocorrelation < phi(a, b) * conj(phi(a - da, b - db)) >.
