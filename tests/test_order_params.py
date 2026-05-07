@@ -377,15 +377,28 @@ def test_inter_chain_correlation_lateral_shape_not_divisible_by_3():
     np.testing.assert_allclose(np.abs(G), 1.0, atol=1e-12)
 
 
-def test_inter_chain_correlation_raises_on_zero_amplitude():
-    """All-O (or all-F) input has |phi| = 0 everywhere; correlation undefined."""
+def test_inter_chain_correlation_nan_on_zero_amplitude():
+    """All-O (or all-F) input has |phi| = 0 everywhere; returns NaN."""
     N = 6
     arr = np.zeros((N, N, N), dtype=int)
-    with pytest.raises(ValueError, match="undefined"):
-        order_params.inter_chain_correlation(arr, period=3)
+    G = order_params.inter_chain_correlation(arr, period=3)
+    assert G.shape == (N, N)
+    assert G.dtype == np.complex128
+    assert np.all(np.isnan(G))
     arr_full = np.ones((N, N, N), dtype=int)
-    with pytest.raises(ValueError, match="undefined"):
-        order_params.inter_chain_correlation(arr_full, period=3)
+    G_full = order_params.inter_chain_correlation(arr_full, period=3)
+    assert G_full.shape == (N, N)
+    assert G_full.dtype == np.complex128
+    assert np.all(np.isnan(G_full))
+
+
+def test_inter_chain_correlation_nan_on_period2_tile_at_period3():
+    """Period-2 tile has zero Fourier weight at k=N/3; returns NaN at period=3."""
+    arr = np.tile(np.array([1, 0]), (6, 6, 3))
+    G = order_params.inter_chain_correlation(arr, period=3)
+    assert G.shape == (6, 6)
+    assert G.dtype == np.complex128
+    assert np.all(np.isnan(G))
 
 
 def test_inter_chain_correlation_accepts_arbitrary_period():
