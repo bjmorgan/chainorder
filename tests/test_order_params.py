@@ -393,7 +393,7 @@ def test_inter_chain_correlation_nan_on_zero_amplitude():
 
 
 def test_inter_chain_correlation_nan_on_period2_tile_at_period3():
-    """Period-2 tile has zero weight at harmonic 2; returns NaN at period=3."""
+    """Period-2 tile has zero Fourier weight at k=N/3; returns NaN at period=3."""
     arr = np.tile(np.array([1, 0]), (6, 6, 3))
     G = order_params.inter_chain_correlation(arr, period=3)
     assert G.shape == (6, 6)
