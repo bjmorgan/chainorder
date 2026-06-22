@@ -83,7 +83,7 @@ along that chain.
   plane, each of length `Nz`.
 
 These arrays are the inputs for the per-chain analysis functions --
-`chain_fft`, `along_chain_correlation`, `motif_counts`, and
+`chain_fft`, `along_chain_correlation`, `motif_frequencies`, and
 `inter_chain_correlation` -- described below. Each takes one
 direction's chains at a time; to analyse chains of a different
 direction, pass `occ.y` or `occ.z` in place of `occ.x`.
