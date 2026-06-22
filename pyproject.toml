@@ -50,7 +50,6 @@ chainorder = ["py.typed"]
 testpaths = ["tests"]
 
 [tool.mypy]
-python_version = "3.11"
 packages = ["chainorder"]
 strict = true
 # NumPy's type stubs declare many operations (notably FFT returns) as
