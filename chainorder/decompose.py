@@ -36,7 +36,7 @@ class SublatticeOccupation:
     Chain-layout per-direction views (`.x`, `.y`, `.z`) are O(1)
     `transpose` views of `occupation` with the last axis brought to the
     along-chain position -- the shape convention the single-direction
-    tools in `order_params` (``chain_fft``, ``motif_counts``,
+    tools in `order_params` (``chain_fft``, ``motif_frequencies``,
     ``along_chain_correlation``, ``inter_chain_correlation``) expect:
 
     - ``x``: shape ``(Ny, Nz, Nx)``; ``x[j, k, i]`` is the x-chain at
