@@ -17,23 +17,22 @@ pair correlation, motif frequencies, inter-chain correlation).
 
 Requires Python 3.11+, NumPy, and ASE.
 
-Clone and install in editable mode:
-
 ```bash
-git clone git@github.com:bjmorgan/chainorder.git
-cd chainorder
-pip install -e .
+pip install chainorder
 ```
 
-Or in one step:
+To install the latest development version directly from GitHub:
 
 ```bash
 pip install git+https://github.com/bjmorgan/chainorder.git
 ```
 
-For development (adds `pytest` and `mypy`):
+For development, clone and install in editable mode with the test and
+type-checking extras:
 
 ```bash
+git clone git@github.com:bjmorgan/chainorder.git
+cd chainorder
 pip install -e ".[dev]"
 ```
 
@@ -72,8 +71,8 @@ A full trajectory is just a loop: per frame, build a
   - `chain_fft(arr)` -- discrete Fourier transform along each chain.
   - `along_chain_correlation(arr)` -- pair correlation g(r) along chains,
     grand-averaged over the chain-plane.
-  - `motif_counts(arr, window_length=N)` -- per-chain counts of
-    each distinct length-`window_length` bit pattern.
+  - `motif_frequencies(arr, window_length=N)` -- per-chain frequency of
+    each distinct length-`window_length` motif (bit pattern).
   - `inter_chain_correlation(arr, period=p)` -- spatial autocorrelation
     of the period-`p` Fourier component across the chain plane.
 
