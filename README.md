@@ -10,8 +10,9 @@ Chain decomposition and order parameters for ReO3-type anion ordering.
 object in an orthorhombic supercell, decomposes the three edge-midpoint
 anion sublattices into per-direction chains, and exposes a small set of
 order parameters computed either over the full 3D occupation (coherent
-structure factor) or along individual chain directions (Fourier spectra,
-pair correlation, motif frequencies, inter-chain correlation).
+structure factor, <111> circulation) or along individual chain directions
+(Fourier spectra, pair correlation, motif frequencies, inter-chain
+correlation).
 
 ## Installation
 
@@ -46,6 +47,7 @@ atoms = read("frame.xyz")                                   # any ASE-readable f
 occ = SublatticeOccupation.from_atoms(atoms, N=6, species="F")  # supercell size (cubic shorthand)
 
 sf = order_params.structure_factor(occ)                      # 3D structure factor
+circ = order_params.circulation_invariants(occ, period=3)    # <111> chirality + coherence
 spectrum = order_params.chain_fft(occ.x)                     # per x-chain FFT
 g_r = order_params.along_chain_correlation(occ.x)            # g(r) along x-chains
 freqs = order_params.motif_frequencies(occ.x, window_length=3)   # length-3 motif frequencies
@@ -68,6 +70,8 @@ A full trajectory is just a loop: per frame, build a
 - `order_params` -- submodule of order parameters:
   - `structure_factor(occ)` -- coherent 3D structure factor of the full
     anion sublattice.
+  - `circulation_invariants(occ, period=p)` -- chirality and coherence of
+    the <111> screw ordering, projected onto the cubic point group.
   - `chain_fft(arr)` -- discrete Fourier transform along each chain.
   - `along_chain_correlation(arr)` -- pair correlation g(r) along chains,
     grand-averaged over the chain-plane.
@@ -76,8 +80,9 @@ A full trajectory is just a loop: per frame, build a
   - `inter_chain_correlation(arr, period=p)` -- spatial autocorrelation
     of the period-`p` Fourier component across the chain plane.
 
-`structure_factor` takes the whole `SublatticeOccupation`; the other
-four take a single chain-layout array (`occ.x`, `occ.y`, or `occ.z`).
+`structure_factor` and `circulation_invariants` take the whole
+`SublatticeOccupation`; the other four take a single chain-layout array
+(`occ.x`, `occ.y`, or `occ.z`).
 
 Each function's docstring covers shape conventions, normalisation, and
 edge cases in detail.

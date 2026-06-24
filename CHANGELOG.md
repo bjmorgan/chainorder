@@ -13,9 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parameter. Returns a `CirculationInvariants(chirality, coherence)` named
   tuple -- the configurational chirality (a pseudoscalar whose sign is the
   screw sense) and the coherence (ordering strength) of the <111> anion
-  ordering of a `SublatticeOccupation`, summed over the four <111> arms.
-  Requires a cubic supercell and a keyword-only `period` (an integer >= 2
-  dividing N).
+  ordering of a `SublatticeOccupation`, projected onto the cubic point group
+  (a Reynolds average over the 48 point operations). Requires a cubic
+  supercell and a keyword-only `period` (an integer >= 2 dividing N).
 
 ## [0.1.0] - 2026-04-15
 
