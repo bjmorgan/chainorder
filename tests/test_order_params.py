@@ -1,3 +1,5 @@
+import itertools
+
 import numpy as np
 import pytest
 from chainorder import order_params
@@ -628,4 +630,70 @@ def test_circulation_invariants_flips_under_reflection(shape):
     np.testing.assert_allclose(ref.coherence, 1.0 / 3.0, atol=1e-10)
     np.testing.assert_allclose(mirror.chirality, -1.0 / 3.0, atol=1e-10)
     np.testing.assert_allclose(mirror.coherence, 1.0 / 3.0, atol=1e-10)
+
+
+def _cubic_point_ops() -> list[tuple[np.ndarray, int]]:
+    """The 48 signed permutation matrices of the cubic point group O_h.
+
+    Returns a list of ``(M, det)``: ``M`` is a 3x3 int signed permutation
+    matrix, ``det`` is ``+1`` (proper, 24 of them) or ``-1`` (improper, 24).
+    """
+    ops: list[tuple[np.ndarray, int]] = []
+    for perm in itertools.permutations(range(3)):
+        P = np.zeros((3, 3), dtype=int)
+        for row, col in enumerate(perm):
+            P[row, col] = 1
+        for signs in itertools.product((1, -1), repeat=3):
+            M = P * np.array(signs)  # scale each column by its sign
+            ops.append((M, int(round(float(np.linalg.det(M))))))
+    return ops
+
+
+def _apply_offset_naive_op(occ_array: np.ndarray, M: np.ndarray) -> np.ndarray:
+    """Apply signed-permutation point op ``M`` to a (3, N, N, N) occupancy.
+
+    Offset-naive: returns ``rho'_s(r) = rho_{sigma^{-1}(s)}(M^T r mod N)``,
+    where ``sigma`` is the unsigned axis permutation of ``M``. Coordinates are
+    reflected as ``i -> (-i) mod N`` on the integer grid (the anion half-cell
+    offset is ignored, matching the FFT amplitude convention). The sublattice
+    relabel is unsigned -- a reflected x-bond is still an x-bond.
+
+    Computed by explicit gather (N is small), so it is obviously correct and
+    independent of the production code's transpose conventions.
+    """
+    M = np.asarray(M, dtype=int)
+    N = occ_array.shape[1]
+    perm = np.argmax(np.abs(M), axis=0)            # perm[c] = image axis of old axis c
+    inv = np.argsort(perm)                         # sigma^{-1}
+    coords = np.indices((N, N, N)).reshape(3, -1)  # (3, N^3) new positions r
+    src = (M.T @ coords) % N                        # (3, N^3) old positions M^T r mod N
+    out = np.empty_like(occ_array)
+    for s in range(3):
+        gathered = occ_array[inv[s]][src[0], src[1], src[2]]
+        out[s] = gathered.reshape(N, N, N)
+    return out
+
+
+@pytest.mark.parametrize("shape", CUBIC_SHAPES)
+def test_circulation_invariants_rotation_and_improper(shape):
+    """Under all 48 cubic point ops applied offset-naive to the reference:
+    coherence is invariant (a true scalar -- also a self-guard on the op
+    helper), and chirality picks up the operation's determinant (+1 proper,
+    -1 improper). Includes rotations that carry (1,1,1) onto other arms."""
+    N = shape[0]
+    occ = single_q_111(N, period=3, sense=1)
+    ref = order_params.circulation_invariants(occ, period=3)
+    for M, det in _cubic_point_ops():
+        moved = SublatticeOccupation(
+            occupation=_apply_offset_naive_op(occ.occupation, M)
+        )
+        out = order_params.circulation_invariants(moved, period=3)
+        np.testing.assert_allclose(
+            out.coherence, ref.coherence, atol=1e-10,
+            err_msg=f"coherence not invariant under det={det} op M=\n{M}",
+        )
+        np.testing.assert_allclose(
+            out.chirality, det * ref.chirality, atol=1e-10,
+            err_msg=f"chirality wrong under det={det} op M=\n{M}",
+        )
 

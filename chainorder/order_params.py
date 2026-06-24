@@ -390,12 +390,19 @@ def circulation_invariants(
             f"N={N}, period={period}."
         )
     f = np.fft.fftn(sub.astype(float), axes=(1, 2, 3)) / (N * N * N)  # offset-naive
-    d, cy = _ARMS[0]  # (1,1,1) arm only; all four arms summed in Task 3
-    idx = tuple((N // period) if x == 1 else (N - N // period) for x in d)
-    g = [f[0][idx], f[1][idx], f[2][idx]]
-    a, b, c = g[cy[0]], g[cy[1]], g[cy[2]]
-    e_plus = a + _W * b + _W * _W * c
-    e_minus = a + _W * _W * b + _W * c
-    chirality = (abs(e_plus) ** 2 - abs(e_minus) ** 2) / 3
-    coherence = (abs(e_plus) ** 2 + abs(e_minus) ** 2) / 3
+    chirality = 0.0
+    coherence = 0.0
+    for d, cy in _ARMS:
+        # period == 2 is a degenerate zone-boundary case: N//period equals
+        # N - N//period, so +q and -q coincide and all four arms map to the
+        # same Nyquist index, where the real amplitude forces
+        # |e_plus| == |e_minus| and chirality is identically 0. Intended use
+        # is period == 3.
+        idx = tuple((N // period) if x == 1 else (N - N // period) for x in d)
+        g = [f[0][idx], f[1][idx], f[2][idx]]
+        a, b, c = g[cy[0]], g[cy[1]], g[cy[2]]
+        e_plus = a + _W * b + _W * _W * c
+        e_minus = a + _W * _W * b + _W * c
+        chirality += (abs(e_plus) ** 2 - abs(e_minus) ** 2) / 3
+        coherence += (abs(e_plus) ** 2 + abs(e_minus) ** 2) / 3
     return CirculationInvariants(float(chirality), float(coherence))
