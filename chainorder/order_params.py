@@ -269,21 +269,31 @@ def structure_factor(occupation: SublatticeOccupation) -> np.ndarray:
 _W = np.exp(2j * np.pi / 3)  # omega: primitive cube root of unity
 
 
-def _make_cubic_ops() -> list[tuple[tuple[int, ...], tuple[int, ...], int]]:
-    """The 48 cubic point operations as ``(perm, signs, det)``.
+class CubicOp(NamedTuple):
+    """One cubic point operation.
 
-    ``perm[d]`` is the old axis that new axis ``d`` reads from; ``signs[d]`` is
-    the sign applied on new axis ``d``; ``det`` is ``+1`` for proper operations
-    and ``-1`` for improper. Six axis permutations times eight sign patterns.
+    Attributes:
+        perm: ``perm[d]`` is the old axis that new axis ``d`` reads from.
+        signs: ``signs[d]`` is the sign applied on new axis ``d``.
+        det: ``+1`` for a proper operation, ``-1`` for an improper one.
     """
-    ops: list[tuple[tuple[int, ...], tuple[int, ...], int]] = []
+
+    perm: tuple[int, int, int]
+    signs: tuple[int, int, int]
+    det: int
+
+
+def _make_cubic_ops() -> list[CubicOp]:
+    """The 48 cubic point operations: six axis permutations times eight sign
+    patterns."""
+    ops: list[CubicOp] = []
     for perm in itertools.permutations(range(3)):
         matrix = np.zeros((3, 3), dtype=int)
         for new_axis, old_axis in enumerate(perm):
             matrix[new_axis, old_axis] = 1
         for signs in itertools.product((1, -1), repeat=3):
             det = int(round(float(np.linalg.det(matrix * np.array(signs)))))
-            ops.append((perm, signs, det))
+            ops.append(CubicOp(perm, signs, det))
     return ops
 
 

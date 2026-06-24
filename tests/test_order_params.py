@@ -612,10 +612,8 @@ def test_circulation_invariants_rejects_malformed_occupation():
 
 @pytest.mark.parametrize("shape", CUBIC_SHAPES)
 def test_circulation_invariants_flips_under_reflection(shape):
-    """Ground-state value and its op-independent mirror. The perfect single-q
-    <111> helix gives chirality = coherence = 1/4 at every N (the projection's
-    normalisation); the sense=-1 fixture (opposite-handed helix, built without
-    the op) gives -1/4, 1/4.
+    """The single-q <111> helix gives chirality = coherence = 1/4 at every N;
+    its sense=-1 mirror, the opposite-handed helix, gives -1/4 and 1/4.
     """
     N = shape[0]
     ref = order_params.circulation_invariants(
@@ -632,12 +630,10 @@ def test_circulation_invariants_flips_under_reflection(shape):
 
 @pytest.mark.parametrize("shape", CUBIC_SHAPES)
 def test_circulation_invariants_invariant_under_physical_ops(shape):
-    """Under the 48 physical cubic operations applied to the single-q <111>
-    helix, coherence is invariant and chirality picks up the operation's
-    determinant. Asserted relative to the unmoved helix, so it tests the
-    invariance alone, not the absolute 1/4 normalisation. A parameter that is
-    not symmetry-correct gives chirality whose magnitude varies across the 48
-    images, not only its sign.
+    """The parameter transforms as a pseudoscalar and a scalar under the 48
+    physical cubic operations: chirality flips with the operation's determinant
+    and coherence is invariant. Asserted relative to the unmoved helix, so it
+    pins this transformation contract rather than the 1/4 normalisation.
     """
     N = shape[0]
     occ = single_q_111(N, period=3, sense=1)
@@ -658,10 +654,9 @@ def test_circulation_invariants_invariant_under_physical_ops(shape):
 
 
 def test_circulation_invariants_random_is_achiral():
-    """Random occupancy at N=6: chirality ~ 0 (measured ~0.011, well within
-    the generous bound), coherence non-negative. N=3 is excluded -- its
-    fluctuation can exceed the bound across seeds, so the achirality of random
-    input is only meaningful at N >= 6."""
+    """Random occupancy is achiral: chirality ~ 0 at N=6, coherence
+    non-negative. The tolerance is loose to absorb finite-size fluctuation,
+    which at N=3 can exceed it."""
     N = 6
     rng = np.random.default_rng(0)
     occ = SublatticeOccupation(occupation=rng.integers(0, 2, size=(3, N, N, N)))
@@ -672,14 +667,15 @@ def test_circulation_invariants_random_is_achiral():
 
 def test_circulation_invariants_centrosymmetric_is_achiral():
     """A structure invariant under the physical inversion has chirality exactly
-    0: inversion is improper, so chirality(occ) = -chirality(occ). Built by
-    symmetrising a random array under the physical inversion (_apply_cubic_op
-    with the identity permutation and all-negative signs).
+    0: inversion is improper, so chirality(occ) = -chirality(occ). The
+    centrosymmetric structure is built with the independent geometric inversion,
+    not the production operation, so its centrosymmetry does not depend on the
+    code under test.
     """
     N = 6
     rng = np.random.default_rng(1)
     half = rng.integers(0, 2, size=(3, N, N, N))
-    centro = np.maximum(half, order_params._apply_cubic_op(half, (0, 1, 2), (-1, -1, -1)))
+    centro = np.maximum(half, _apply_cubic_op_geometric(half, (0, 1, 2), (-1, -1, -1)))
     out = order_params.circulation_invariants(
         SublatticeOccupation(occupation=centro), period=3
     )
@@ -697,12 +693,11 @@ def test_circulation_invariants_period_2_is_achiral_at_zone_boundary():
 
 
 def test_circulation_invariants_unequal_amplitudes():
-    """Chirality at an asymmetric point, where a wrong amplitude-to-sublattice
-    pairing would hide (every other nonzero-chirality test sits at the symmetric
-    |a| = |b| = |c| point). Two sublattices carry the full helix and the third
-    is empty, so the single-arm amplitudes are a = 1/3, b = (1/3) W^2, c = 0,
-    giving single-arm q_chi = 1/3, q_coh = 5/9; the projection scales a
-    (1,1,1)-confined state by 1/4, so chirality = 1/12, coherence = 5/36.
+    """Chirality at an asymmetric point: two sublattices carry the full helix
+    and the third is empty, so the single-arm amplitudes are a = 1/3,
+    b = (1/3) W^2, c = 0, giving q_chi = 1/3 and q_coh = 5/9; the projection
+    scales a (1,1,1)-confined state by 1/4, so chirality = 1/12 and
+    coherence = 5/36.
     """
     N = 6
     occ = single_q_111(N, period=3, sense=1).occupation.copy()
@@ -714,42 +709,49 @@ def test_circulation_invariants_unequal_amplitudes():
     np.testing.assert_allclose(out.coherence, 5.0 / 36.0, atol=1e-10)
 
 
-def _apply_cubic_op_loop(occ, perm, signs):
-    """Triple-loop reference for ``order_params._apply_cubic_op`` (breadth
-    oracle). Obviously correct by explicit gather; used only to validate the
-    vectorised production version across all 48 ops on random input. Layer 1
-    independently pins three of these ops by hand, so the loop is trusted for
-    breadth, not as the source of truth for the offset convention.
+def _apply_cubic_op_geometric(occ, perm, signs):
+    """Independent reference for ``order_params._apply_cubic_op``, derived from
+    the anion site geometry rather than transcribing the production logic.
+
+    An anion on sublattice ``s`` in cell ``r`` sits at ``r + (1/2) e_s`` (an edge
+    midpoint, half-integer along its own bond axis ``s``). The signed-permutation
+    operation ``M`` sends it to ``M (r + (1/2) e_s) = r' + (1/2) e_s'``, where
+    ``M e_s = sigma e_s'``; so the image bond axis is ``s'`` and ``r' = M r`` for
+    ``sigma = +1`` or ``M r - e_s'`` for ``sigma = -1``, taken mod N. A forward
+    scatter, where production is a backward gather -- so agreement across all 48
+    ops is a genuine cross-check of the offset convention, not a restatement.
     """
     N = occ.shape[1]
-    out = np.empty_like(occ)
-    for s_new in range(3):
-        s_old = perm[s_new]
-        for i, j, k in np.ndindex(N, N, N):
-            new = (i, j, k)
-            old = [0, 0, 0]
-            for d in range(3):
-                src = perm[d]
-                if signs[d] == 1:
-                    old[src] = new[d]
-                elif src == s_old:
-                    old[src] = (N - 1 - new[d]) % N
-                else:
-                    old[src] = (-new[d]) % N
-            out[s_new, i, j, k] = occ[s_old, old[0], old[1], old[2]]
+    matrix = np.zeros((3, 3), dtype=int)
+    for new_axis, old_axis in enumerate(perm):
+        matrix[new_axis, old_axis] = signs[new_axis]
+    image_axis = [perm.index(s) for s in range(3)]  # M e_s lies along image_axis[s]
+    cells = np.array(list(np.ndindex(N, N, N)))      # (N^3, 3): every cell r
+    out = np.zeros_like(occ)
+    for s in range(3):
+        s_new = image_axis[s]
+        moved = cells @ matrix.T                       # M r
+        if signs[s_new] == -1:
+            moved[:, s_new] -= 1                        # the -e_s' half-cell correction
+        moved %= N
+        out[s_new, moved[:, 0], moved[:, 1], moved[:, 2]] = occ[
+            s, cells[:, 0], cells[:, 1], cells[:, 2]
+        ]
     return out
 
 
 @pytest.mark.parametrize("N", [3, 4, 5])
-def test_apply_cubic_op_vectorised_matches_loop(N):
-    """The vectorised ``_apply_cubic_op`` equals the triple-loop reference for
-    all 48 cubic point operations on random input."""
+def test_apply_cubic_op_matches_geometric_oracle(N):
+    """The vectorised ``_apply_cubic_op`` equals the independent geometric
+    reference for all 48 cubic point operations on random input, pinning the
+    offset convention across the whole group.
+    """
     rng = np.random.default_rng(0)
     occ = rng.integers(0, 5, size=(3, N, N, N))
     for perm, signs, _det in order_params.CUBIC_OPS:
         np.testing.assert_array_equal(
             order_params._apply_cubic_op(occ, perm, signs),
-            _apply_cubic_op_loop(occ, perm, signs),
+            _apply_cubic_op_geometric(occ, perm, signs),
             err_msg=f"perm={perm} signs={signs} N={N}",
         )
 
@@ -763,9 +765,8 @@ def test_apply_cubic_op_single_anion_destinations():
     N = 4
     # (sublattice, site, perm, signs, expected (sublattice, i, j, k))
     cases = [
-        # Physical inversion: own-axis flip (1 -> 2) AND perpendicular flip
-        # (1 -> 3) in one op. Offset-naive would give (0, 3, 3, 0); a
-        # perpendicular branch that forgot the minus would give (0, 2, 1, 0).
+        # Physical inversion: own-axis flip (1 -> 2) and perpendicular flip
+        # (1 -> 3). Offset-naive would give (0, 3, 3, 0).
         (0, (1, 1, 0), (0, 1, 2), (-1, -1, -1), (0, 2, 3, 0)),
         # Pure transposition: relabel x-bond -> y-bond plus the axis swap, no
         # flips. The control with no offset subtlety.

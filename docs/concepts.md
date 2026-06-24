@@ -261,24 +261,28 @@ handedness at a chosen period (the `period` argument) into two numbers:
   of sense. It never goes negative and is unchanged by every cubic
   symmetry operation.
 
-Both are summed over the four <111> body-diagonal directions and are
-intensive (independent of supercell size).
+Both are obtained by averaging over the 48 cubic point symmetry operations
+(a group projection), which makes `chirality` an exact pseudoscalar and
+`coherence` an exact scalar. Both are intensive (independent of supercell
+size).
 
 Three concrete cases, all with `period=3`:
 
 - A perfect single-q <111> helix (each sublattice's wave offset by one
-  step along the body diagonal): `chirality = 1/3` and `coherence = 1/3`,
-  the same at every N. Its mirror image gives `chirality = -1/3`,
-  `coherence = 1/3`.
+  step along the body diagonal): `chirality = 1/4` and `coherence = 1/4`,
+  the same at every N. Its mirror image gives `chirality = -1/4`,
+  `coherence = 1/4`.
 - A random or disordered occupancy: `chirality ~ 0`, with `coherence`
   measuring whatever weak <111> ordering happens to be present.
 - Any centrosymmetric pattern (one equal to its own inversion):
   `chirality = 0` exactly.
 
-The amplitudes come from a plain Fourier transform of the occupancy grid
--- the site labels alone, with no half-cell position offsets. The
-chirality is configurational: it depends only on which species sits on
-which site, not on where the atoms physically relax.
+The symmetry average acts on the anion sites as they sit physically -- at
+the edge midpoints, half-integer along their own bond axis -- so a
+reflection treats a sublattice's own axis differently from the others; this
+is what makes `chirality` correctly invariant under the lattice symmetry. It
+remains configurational: it depends only on which species sits on which
+site, not on where the atoms physically relax.
 
 `circulation_invariants` takes a `SublatticeOccupation` directly. It
 requires a cubic supercell (`Nx = Ny = Nz`) -- the <111> three-fold has no
