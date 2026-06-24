@@ -5,10 +5,6 @@ point operations, each a ``_apply_cubic_op`` followed by a ``_project_arm``
 projection) against a full-FFT reference, and splits the single-k cost into the
 operation-apply phase and the projection phase.
 
-After single-k the apply phase is the larger term; its share (``apply%``) is the
-signal for whether the one-FFT collapse -- which would cut the applies too -- is
-ever worth chasing. This module measures and reports; it draws no conclusions.
-
 Run as a single command from the repository root::
 
     python benchmarks/bench_circulation_invariants.py
@@ -44,13 +40,13 @@ PERIOD = 3
 REPEATS = 25
 CONFIG_CHECK_N = 12
 CONFIG_TOLERANCE = 0.20  # config-independence spread must stay within timer noise
-IDENTITY = ((0, 1, 2), (1, 1, 1))  # an operation that yields a representative moved array
+IDENTITY = ((0, 1, 2), (1, 1, 1))  # the identity operation; projection cost is content-independent
 
 _W = np.exp(2j * np.pi / 3)
 
 
 def _circulation_invariants_fft(occupation: SublatticeOccupation, *, period: int) -> tuple[float, float]:
-    """Full-FFT reference (the pre-single-k read) for the A/B comparison."""
+    """Full-FFT reference for the timing comparison."""
     sub = occupation.occupation
     n = sub.shape[1]
     idx = (n // period,) * 3

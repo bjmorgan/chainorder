@@ -727,10 +727,9 @@ def test_arm_ramp_matches_explicit_grid():
 def _circulation_invariants_fft(occupation, *, period):
     """Full-FFT reference for circulation_invariants.
 
-    The same 48-op Reynolds projection as production, but each arm is read from a
-    full ``fftn`` bin. It shares only ``_apply_cubic_op`` with production (the
-    cubic action is not under test) and computes the arm independently, so it is
-    an independent oracle for the single-k projection.
+    Differs from production only in the arm read -- a full ``fftn`` bin rather
+    than the single-k projection, the one step single-k changed -- so the
+    equivalence sweep checks that read against an independent computation.
     """
     sub = occupation.occupation
     N = sub.shape[1]
@@ -753,9 +752,8 @@ def _circulation_invariants_fft(occupation, *, period):
 
 @pytest.mark.parametrize("N, period", [(6, 3), (9, 3), (12, 3), (12, 4)])
 def test_circulation_invariants_matches_fft_reference(N, period):
-    """Single-k production equals the full-FFT reference within atol=1e-10 over
-    random input (the actual difference is ~1e-17). Random input across two
-    periods catches a ramp index or sign slip."""
+    """Single-k production equals the full-FFT reference within atol=1e-10 on
+    random input, at several N and two periods."""
     rng = np.random.default_rng(0)
     occ = SublatticeOccupation(occupation=rng.integers(0, 2, size=(3, N, N, N)))
     single_k = order_params.circulation_invariants(occ, period=period)
