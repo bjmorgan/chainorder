@@ -327,48 +327,28 @@ def _apply_cubic_op(
     return out
 
 
-def _rot120(d: tuple[int, int, int]) -> np.ndarray:
-    """+120 degree right-handed rotation matrix about body diagonal ``d``.
+def _raw(occupation: np.ndarray, N: int, period: int) -> tuple[float, float]:
+    """Single-arm <111> chirality and coherence from a plain FFT.
 
-    A 120 degree rotation about a body diagonal is an exact integer
-    signed-permutation matrix; ``np.rint`` clears the floating-point
-    residual from Rodrigues' formula. Used only to build ``_ARMS`` at import.
+    Reads the occupancy's FFT at the symmetric body-diagonal bin
+    ``(N/period, N/period, N/period)``, where the three sublattices' half-cell
+    phases coincide and cancel. With ``E+`` and ``E-`` the two circular
+    combinations of the three sublattice amplitudes, returns
+    ``(|E+|^2 - |E-|^2, |E+|^2 + |E-|^2)``.
     """
-    n = np.array(d, dtype=float)
-    n /= np.linalg.norm(n)
-    c, s = -0.5, np.sqrt(3) / 2
-    K = np.array([[0, -n[2], n[1]], [n[2], 0, -n[0]], [-n[1], n[0], 0]])
-    return np.rint(c * np.eye(3) + s * K + (1 - c) * np.outer(n, n)).astype(int)
-
-
-def _cycle(R: np.ndarray) -> list[int]:
-    """Sublattice 3-cycle induced by rotation matrix ``R``.
-
-    Returns ``[0, p[0], p[p[0]]]`` -- the orbit of sublattice 0 under the
-    axis permutation ``p``, where ``p[a]`` is the axis that ``R`` sends
-    axis ``a`` to.
-    """
-    p = [int(np.argmax(np.abs(R[:, a]))) for a in range(3)]
-    return [0, p[0], p[p[0]]]
-
-
-# One representative per +/-q pair of the four <111> arms, each paired with
-# the +120 degree right-handed sublattice cycle it induces.
-_ARMS = [
-    (d, _cycle(_rot120(d)))
-    for d in [(1, 1, 1), (1, 1, -1), (1, -1, 1), (-1, 1, 1)]
-]
-# Sanity-check at import that each induced cycle is a permutation of (0, 1, 2).
-# This guards the output of _cycle, not the handedness of the rotation.
-if not all(sorted(cy) == [0, 1, 2] for _, cy in _ARMS):
-    raise RuntimeError(
-        f"_ARMS cycles are not permutations of (0, 1, 2): {_ARMS}. "
-        f"This indicates a bug in _rot120 or _cycle."
+    f = np.fft.fftn(occupation.astype(float), axes=(1, 2, 3)) / N**3
+    idx = (N // period,) * 3
+    a, b, c = f[0][idx], f[1][idx], f[2][idx]
+    e_plus = a + _W * b + _W * _W * c
+    e_minus = a + _W * _W * b + _W * c
+    return (
+        abs(e_plus) ** 2 - abs(e_minus) ** 2,
+        abs(e_plus) ** 2 + abs(e_minus) ** 2,
     )
 
 
 class CirculationInvariants(NamedTuple):
-    """The two <111> circulation invariants, summed over the four arms.
+    """The two <111> circulation invariants (A2 pseudoscalar, A1 scalar).
 
     Attributes:
         chirality: ``|E+|^2 - |E-|^2`` -- the circulation imbalance
@@ -391,35 +371,34 @@ def circulation_invariants(
 
     On the ReO3 anion sublattice the three edge sublattices (x-, y-, z-bond)
     carry density waves. At the body-diagonal wavevector ``k = (N/period) *
-    (1, 1, 1)`` the 3-fold about <111> cyclically permutes them, so their
-    amplitudes split into a symmetric A1 part and a two-dimensional circular
-    part (the E doublet, components ``E+`` and ``E-``). With ``omega =
-    exp(2j*pi/3)`` and the three sublattice amplitudes ``a, b, c`` ordered by
-    the arm's cycle,
+    (1, 1, 1)`` the 3-fold about <111> cyclically permutes them, splitting their
+    amplitudes into a symmetric A1 part and a circular E doublet (``E+``, ``E-``).
+    The two invariants are ``chirality = |E+|^2 - |E-|^2`` (a pseudoscalar; its
+    sign is the screw sense) and ``coherence = |E+|^2 + |E-|^2`` (the <111>
+    ordering strength).
 
-        E+ = a + omega*b + omega**2*c
-        E- = a + omega**2*b + omega*c
+    Both are projected onto their representations by averaging over the 48 cubic
+    point operations (the Reynolds projector), so chirality is a pseudoscalar and
+    coherence a scalar by construction:
 
-    and the two invariants are ``chirality = |E+|^2 - |E-|^2`` (a pseudoscalar)
-    and ``coherence = |E+|^2 + |E-|^2``, each summed over the four <111> arms
-    ``(1,1,1)``, ``(1,1,-1)``, ``(1,-1,1)``, ``(-1,1,1)`` (one representative
-    per +/-q pair).
+        chirality = (1/48) sum_g det(g) q_chi(g . occ)
+        coherence = (1/48) sum_g        q_coh(g . occ)
 
-    The amplitudes are offset-naive -- a plain FFT of the occupancy grid, with
-    no half-cell site-position phases. The chirality is configurational: it
-    depends only on which species occupies which site, so the site labels
-    alone carry it. The FFT is divided by ``Nx*Ny*Nz``, the same normalisation
-    as ``chain_fft`` and ``structure_factor``, so the invariants are intensive:
-    the perfect single-q <111> helix gives ``chirality = coherence = 1/3`` at
-    every N.
+    where ``g . occ`` is the offset-aware action of operation ``g`` on the
+    occupancy -- the anions sit at edge midpoints, so a reflection maps a
+    sublattice's own axis as ``i -> N - 1 - i`` -- and ``q_chi``, ``q_coh`` are
+    the plain-FFT single-arm invariants at the symmetric ``(1, 1, 1)`` bin, where
+    the half-cell phases cancel. The perfect single-q <111> helix gives
+    ``chirality = coherence = 1/4`` at every N.
 
     Args:
         occupation: ``SublatticeOccupation`` whose ``.occupation`` has shape
             ``(3, N, N, N)``. Must be cubic.
         period: Target <111> repeat length. Keyword-only, an integer ``>= 2``.
             N must be divisible by ``period``. ``period = 2`` is a degenerate
-            zone-boundary case (``+q`` and ``-q`` coincide, so ``chirality`` is
-            identically 0); the intended use is ``period = 3``.
+            zone-boundary case: the wavevector is its own negative and the
+            amplitude there is real, so ``chirality`` is identically 0 under the
+            projection. The intended use is ``period = 3``.
 
     Returns:
         ``CirculationInvariants(chirality, coherence)``. Both intensive
@@ -453,22 +432,13 @@ def circulation_invariants(
             f"circulation_invariants requires N divisible by period, got "
             f"N={N}, period={period}."
         )
-    # Offset-naive FFT (no half-cell phases); the /(Nx*Ny*Nz) normalisation
-    # makes the invariants intensive, matching chain_fft / structure_factor.
-    f = np.fft.fftn(sub.astype(float), axes=(1, 2, 3)) / (N * N * N)
     chirality = 0.0
     coherence = 0.0
-    for d, cy in _ARMS:
-        # period == 2 is a degenerate zone-boundary case: N//period equals
-        # N - N//period, so +q and -q coincide and all four arms map to the
-        # same Nyquist index, where the real amplitude forces
-        # |e_plus| == |e_minus| and chirality is identically 0. Intended use
-        # is period == 3.
-        idx = tuple((N // period) if x == 1 else (N - N // period) for x in d)
-        g = [f[0][idx], f[1][idx], f[2][idx]]
-        a, b, c = g[cy[0]], g[cy[1]], g[cy[2]]
-        e_plus = a + _W * b + _W * _W * c
-        e_minus = a + _W * _W * b + _W * c
-        chirality += (abs(e_plus) ** 2 - abs(e_minus) ** 2) / 3
-        coherence += (abs(e_plus) ** 2 + abs(e_minus) ** 2) / 3
-    return CirculationInvariants(float(chirality), float(coherence))
+    for perm, signs, det in CUBIC_OPS:
+        raw_chi, raw_coh = _raw(_apply_cubic_op(sub, perm, signs), N, period)
+        chirality += det * raw_chi
+        coherence += raw_coh
+    return CirculationInvariants(
+        float(chirality / len(CUBIC_OPS)),
+        float(coherence / len(CUBIC_OPS)),
+    )
