@@ -278,8 +278,8 @@ class CubicOp(NamedTuple):
         det: ``+1`` for a proper operation, ``-1`` for an improper one.
     """
 
-    perm: tuple[int, int, int]
-    signs: tuple[int, int, int]
+    perm: tuple[int, ...]
+    signs: tuple[int, ...]
     det: int
 
 
