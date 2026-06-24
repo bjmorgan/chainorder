@@ -1,3 +1,5 @@
+import itertools
+
 import numpy as np
 import pytest
 from chainorder import order_params
@@ -6,6 +8,7 @@ from tests._fixtures import (
     perfect_oof_chain,
     perfect_ofof_chain,
     occupation_from_chain_arrays,
+    single_q_111,
     SHAPES,
 )
 
@@ -576,4 +579,175 @@ def test_structure_factor_rejects_malformed_occupation_shape():
     with pytest.raises(ValueError, match="shape \\(3, Nx, Ny, Nz\\)"):
         order_params.structure_factor(bad_rank)
 
+
+def test_circulation_invariants_rejects_non_cubic():
+    """The <111> 3-fold exists only for a cubic cell; non-cubic must raise."""
+    occ = SublatticeOccupation(occupation=np.zeros((3, 2, 3, 4), dtype=int))
+    with pytest.raises(ValueError, match="cubic"):
+        order_params.circulation_invariants(occ, period=3)
+
+
+def test_circulation_invariants_rejects_period_below_2():
+    """period < 2 (and non-integer) is rejected before it can index off-grid."""
+    occ = SublatticeOccupation(occupation=np.zeros((3, 6, 6, 6), dtype=int))
+    for bad in (1, 0, -1, 2.5):
+        with pytest.raises(ValueError, match="period must be an integer >= 2"):
+            order_params.circulation_invariants(occ, period=bad)  # type: ignore[arg-type]
+
+
+def test_circulation_invariants_rejects_period_not_dividing_N():
+    """N=6 has no clean period-4 <111> harmonic."""
+    occ = SublatticeOccupation(occupation=np.zeros((3, 6, 6, 6), dtype=int))
+    with pytest.raises(ValueError, match="divisible by period"):
+        order_params.circulation_invariants(occ, period=4)
+
+
+def test_circulation_invariants_rejects_malformed_occupation():
+    """.occupation must be 4-D with leading axis of length 3."""
+    bad_leading = SublatticeOccupation(occupation=np.zeros((2, 4, 4, 4), dtype=int))
+    with pytest.raises(ValueError, match=r"shape \(3, Nx, Ny, Nz\)"):
+        order_params.circulation_invariants(bad_leading, period=3)
+    bad_rank = SublatticeOccupation(occupation=np.zeros((3, 4, 4), dtype=int))
+    with pytest.raises(ValueError, match=r"shape \(3, Nx, Ny, Nz\)"):
+        order_params.circulation_invariants(bad_rank, period=3)
+
+
+@pytest.mark.parametrize("shape", CUBIC_SHAPES)
+def test_circulation_invariants_flips_under_reflection(shape):
+    """Reference vs its inversion partner: chirality negates, coherence holds.
+
+    The perfect single-q <111> helix gives chirality = coherence = 1/3 at
+    every N (intensive); its mirror gives -1/3 / 1/3.
+    """
+    N = shape[0]
+    ref = order_params.circulation_invariants(
+        single_q_111(N, period=3, sense=1), period=3
+    )
+    mirror = order_params.circulation_invariants(
+        single_q_111(N, period=3, sense=-1), period=3
+    )
+    np.testing.assert_allclose(ref.chirality, 1.0 / 3.0, atol=1e-10)
+    np.testing.assert_allclose(ref.coherence, 1.0 / 3.0, atol=1e-10)
+    np.testing.assert_allclose(mirror.chirality, -1.0 / 3.0, atol=1e-10)
+    np.testing.assert_allclose(mirror.coherence, 1.0 / 3.0, atol=1e-10)
+
+
+def _cubic_point_ops() -> list[tuple[np.ndarray, int]]:
+    """The 48 signed permutation matrices of the cubic point group O_h.
+
+    Returns a list of ``(M, det)``: ``M`` is a 3x3 int signed permutation
+    matrix, ``det`` is ``+1`` (proper, 24 of them) or ``-1`` (improper, 24).
+    """
+    ops: list[tuple[np.ndarray, int]] = []
+    for perm in itertools.permutations(range(3)):
+        P = np.zeros((3, 3), dtype=int)
+        for row, col in enumerate(perm):
+            P[row, col] = 1
+        for signs in itertools.product((1, -1), repeat=3):
+            M = P * np.array(signs)  # scale each column by its sign
+            ops.append((M, int(round(float(np.linalg.det(M))))))
+    return ops
+
+
+def _apply_offset_naive_op(occ_array: np.ndarray, M: np.ndarray) -> np.ndarray:
+    """Apply signed-permutation point op ``M`` to a (3, N, N, N) occupancy.
+
+    Offset-naive: returns ``rho'_s(r) = rho_{sigma^{-1}(s)}(M^T r mod N)``,
+    where ``sigma`` is the unsigned axis permutation of ``M``. Coordinates are
+    reflected as ``i -> (-i) mod N`` on the integer grid (the anion half-cell
+    offset is ignored, matching the FFT amplitude convention). The sublattice
+    relabel is unsigned -- a reflected x-bond is still an x-bond.
+
+    Computed by explicit gather (N is small), so it is obviously correct and
+    independent of the production code's transpose conventions.
+    """
+    M = np.asarray(M, dtype=int)
+    N = occ_array.shape[1]
+    perm = np.argmax(np.abs(M), axis=0)            # perm[c] = image axis of old axis c
+    inv = np.argsort(perm)                         # sigma^{-1}
+    coords = np.indices((N, N, N)).reshape(3, -1)  # (3, N^3) new positions r
+    src = (M.T @ coords) % N                        # (3, N^3) old positions M^T r mod N
+    out = np.empty_like(occ_array)
+    for s in range(3):
+        gathered = occ_array[inv[s]][src[0], src[1], src[2]]
+        out[s] = gathered.reshape(N, N, N)
+    return out
+
+
+@pytest.mark.parametrize("shape", CUBIC_SHAPES)
+def test_circulation_invariants_rotation_and_improper(shape):
+    """Under all 48 cubic point ops applied offset-naive to the reference:
+    coherence is invariant (a true scalar -- also a self-guard on the op
+    helper), and chirality picks up the operation's determinant (+1 proper,
+    -1 improper). Includes rotations that carry (1,1,1) onto other arms."""
+    N = shape[0]
+    occ = single_q_111(N, period=3, sense=1)
+    ref = order_params.circulation_invariants(occ, period=3)
+    for M, det in _cubic_point_ops():
+        moved = SublatticeOccupation(
+            occupation=_apply_offset_naive_op(occ.occupation, M)
+        )
+        out = order_params.circulation_invariants(moved, period=3)
+        np.testing.assert_allclose(
+            out.coherence, ref.coherence, atol=1e-10,
+            err_msg=f"coherence not invariant under det={det} op M=\n{M}",
+        )
+        np.testing.assert_allclose(
+            out.chirality, det * ref.chirality, atol=1e-10,
+            err_msg=f"chirality wrong under det={det} op M=\n{M}",
+        )
+
+
+def test_circulation_invariants_random_is_achiral():
+    """Random occupancy at N=6: chirality ~ 0 (measured ~0.011, well within
+    the generous bound), coherence non-negative. N=3 is excluded -- its
+    fluctuation can exceed the bound across seeds, so the achirality of random
+    input is only meaningful at N >= 6."""
+    N = 6
+    rng = np.random.default_rng(0)
+    occ = SublatticeOccupation(occupation=rng.integers(0, 2, size=(3, N, N, N)))
+    out = order_params.circulation_invariants(occ, period=3)
+    assert abs(out.chirality) < 0.05
+    assert out.coherence >= 0.0
+
+
+def test_circulation_invariants_centrosymmetric_is_achiral():
+    """A centrosymmetric pattern (occ_s(r) = occ_s(-r)) has chirality 0."""
+    N = 6
+    rng = np.random.default_rng(1)
+    half = rng.integers(0, 2, size=(3, N, N, N))
+    # inv (below) is rho(-r): reflect every spatial axis by i -> (-i) mod N.
+    # The elementwise max of rho(r) and rho(-r) is centrosymmetric and binary.
+    inv = np.roll(np.flip(half, axis=(1, 2, 3)), shift=1, axis=(1, 2, 3))
+    occ = SublatticeOccupation(occupation=np.maximum(half, inv))
+    out = order_params.circulation_invariants(occ, period=3)
+    np.testing.assert_allclose(out.chirality, 0.0, atol=1e-10)
+
+
+def test_circulation_invariants_period_2_is_achiral_at_zone_boundary():
+    """period = 2: the <111> wavevector is its own negative, so |E+| == |E-|
+    and chirality is identically 0 for any input."""
+    N = 6
+    rng = np.random.default_rng(2)
+    occ = SublatticeOccupation(occupation=rng.integers(0, 2, size=(3, N, N, N)))
+    out = order_params.circulation_invariants(occ, period=2)
+    np.testing.assert_allclose(out.chirality, 0.0, atol=1e-10)
+
+
+def test_circulation_invariants_unequal_amplitudes():
+    """Chirality at an asymmetric point: two sublattices carry the full helix
+    and the third is empty, so |f_0| = |f_1| but |f_2| = 0. Every other
+    nonzero-chirality test sits at the symmetric |a| = |b| = |c| point of
+    single_q_111, whereas real trajectories are partial, unequal-amplitude
+    ordering -- the regime where a wrong amplitude-to-sublattice pairing would
+    hide. Analytic values for this construction: chirality = 1/9, coherence =
+    5/27."""
+    N = 6
+    occ = single_q_111(N, period=3, sense=1).occupation.copy()
+    occ[2] = 0
+    out = order_params.circulation_invariants(
+        SublatticeOccupation(occupation=occ), period=3
+    )
+    np.testing.assert_allclose(out.chirality, 1.0 / 9.0, atol=1e-10)
+    np.testing.assert_allclose(out.coherence, 5.0 / 27.0, atol=1e-10)
 

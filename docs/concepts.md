@@ -245,6 +245,47 @@ rotation of the input structure produces the correspondingly
 rotated output. Anisotropy is preserved: chains ordered along one
 direction give peaks on the matching reciprocal axis.
 
+### circulation_invariants
+
+On the anion sublattice the three edge sublattices (x-, y-, z-bond) each
+carry their own ordering wave. Along the body diagonal these three waves
+can wind together with a definite handedness -- a left- or right-screw
+circulation -- or with none. `circulation_invariants` resolves that
+handedness at a chosen period (the `period` argument) into two numbers:
+
+- `chirality` -- the circulation imbalance, positive for one screw sense
+  and negative for the other. It is a pseudoscalar: any mirror or
+  inversion of the structure flips its sign, and a proper rotation leaves
+  it unchanged.
+- `coherence` -- the overall strength of the <111> ordering, regardless
+  of sense. It never goes negative and is unchanged by every cubic
+  symmetry operation.
+
+Both are summed over the four <111> body-diagonal directions and are
+intensive (independent of supercell size).
+
+Three concrete cases, all with `period=3`:
+
+- A perfect single-q <111> helix (each sublattice's wave offset by one
+  step along the body diagonal): `chirality = 1/3` and `coherence = 1/3`,
+  the same at every N. Its mirror image gives `chirality = -1/3`,
+  `coherence = 1/3`.
+- A random or disordered occupancy: `chirality ~ 0`, with `coherence`
+  measuring whatever weak <111> ordering happens to be present.
+- Any centrosymmetric pattern (one equal to its own inversion):
+  `chirality = 0` exactly.
+
+The amplitudes come from a plain Fourier transform of the occupancy grid
+-- the site labels alone, with no half-cell position offsets. The
+chirality is configurational: it depends only on which species sits on
+which site, not on where the atoms physically relax.
+
+`circulation_invariants` takes a `SublatticeOccupation` directly. It
+requires a cubic supercell (`Nx = Ny = Nz`) -- the <111> three-fold has no
+meaning otherwise -- and `period` an integer of at least 2 that divides N.
+`period = 2` is a degenerate boundary case where the two screw senses
+coincide and `chirality` is always 0; the meaningful use is `period = 3`.
+
 ## Common patterns
 
 ### Trajectory loop
