@@ -271,8 +271,9 @@ _W = np.exp(2j * np.pi / 3)  # omega: primitive cube root of unity
 def _rot120(d: tuple[int, int, int]) -> np.ndarray:
     """+120 degree right-handed rotation matrix about body diagonal ``d``.
 
-    Rodrigues' formula at 120 degrees, rounded to the integer lattice
-    operation. Used only to build ``_ARMS`` at import.
+    A 120 degree rotation about a body diagonal is an exact integer
+    signed-permutation matrix; ``np.rint`` clears the floating-point
+    residual from Rodrigues' formula. Used only to build ``_ARMS`` at import.
     """
     n = np.array(d, dtype=float)
     n /= np.linalg.norm(n)
@@ -298,10 +299,13 @@ _ARMS = [
     (d, _cycle(_rot120(d)))
     for d in [(1, 1, 1), (1, 1, -1), (1, -1, 1), (-1, 1, 1)]
 ]
-# Fail fast at import if rounding ever drifts a rotation off a clean permutation.
-assert all(sorted(cy) == [0, 1, 2] for _, cy in _ARMS), (
-    f"_ARMS cycles are not permutations of (0, 1, 2): {_ARMS}"
-)
+# Sanity-check at import that each induced cycle is a permutation of (0, 1, 2).
+# This guards the output of _cycle, not the handedness of the rotation.
+if not all(sorted(cy) == [0, 1, 2] for _, cy in _ARMS):
+    raise RuntimeError(
+        f"_ARMS cycles are not permutations of (0, 1, 2): {_ARMS}. "
+        f"This indicates a bug in _rot120 or _cycle."
+    )
 
 
 class CirculationInvariants(NamedTuple):
@@ -311,7 +315,8 @@ class CirculationInvariants(NamedTuple):
         chirality: ``|E+|^2 - |E-|^2`` -- the circulation imbalance
             (a pseudoscalar; its sign is the screw sense). Flips under any
             improper lattice operation, is invariant under proper rotations,
-            and is ~0 for achiral or disordered input.
+            and is exactly 0 for achiral (centrosymmetric) input and ~0 for
+            disordered input.
         coherence: ``|E+|^2 + |E-|^2`` -- the <111> ordering strength
             (``>= 0``). Invariant under the full cubic point group.
     """
@@ -389,7 +394,9 @@ def circulation_invariants(
             f"circulation_invariants requires N divisible by period, got "
             f"N={N}, period={period}."
         )
-    f = np.fft.fftn(sub.astype(float), axes=(1, 2, 3)) / (N * N * N)  # offset-naive
+    # Offset-naive FFT (no half-cell phases); the /(Nx*Ny*Nz) normalisation
+    # makes the invariants intensive, matching chain_fft / structure_factor.
+    f = np.fft.fftn(sub.astype(float), axes=(1, 2, 3)) / (N * N * N)
     chirality = 0.0
     coherence = 0.0
     for d, cy in _ARMS:
