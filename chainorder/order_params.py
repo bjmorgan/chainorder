@@ -337,18 +337,32 @@ def _apply_cubic_op(
     return out
 
 
-def _raw(occupation: np.ndarray, N: int, period: int) -> tuple[float, float]:
-    """Single-arm <111> chirality and coherence from a plain FFT.
+def _arm_ramp(N: int, period: int) -> np.ndarray:
+    """The fixed ``(N, N, N)`` phase ramp for the symmetric ``(1, 1, 1)`` arm.
 
-    Reads the occupancy's FFT at the symmetric body-diagonal bin
-    ``(N/period, N/period, N/period)``, where the three sublattices' half-cell
-    phases coincide and cancel. With ``E+`` and ``E-`` the two circular
-    combinations of the three sublattice amplitudes, returns
-    ``(|E+|^2 - |E-|^2, |E+|^2 + |E-|^2)``.
+    The single-q <111> bin at ``(N/period)(1, 1, 1)`` of a plain FFT is a
+    projection against ``exp(-2j pi (x + y + z) / period)`` (``period`` divides
+    N, so the index is exact). The ramp is the same for all 48 operations, so it
+    is built once per call.
     """
-    f = np.fft.fftn(occupation.astype(float), axes=(1, 2, 3)) / N**3
-    idx = (N // period,) * 3
-    a, b, c = f[0][idx], f[1][idx], f[2][idx]
+    triad = np.indices((N, N, N)).sum(axis=0)
+    return np.exp(-2j * np.pi * triad / period)
+
+
+def _project_arm(
+    occupation: np.ndarray, ramp: np.ndarray, N: int
+) -> tuple[float, float]:
+    """Single-arm <111> chirality and coherence by direct projection.
+
+    Projects the three sublattices onto ``ramp`` (from ``_arm_ramp``); the result
+    is the single-q ``(1, 1, 1)`` FFT bin, to machine epsilon. With ``E+`` and
+    ``E-`` the two circular combinations of the three sublattice amplitudes,
+    returns ``(|E+|^2 - |E-|^2, |E+|^2 + |E-|^2)``.
+    """
+    a, b, c = (
+        np.tensordot(occupation.astype(float), ramp, axes=([1, 2, 3], [0, 1, 2]))
+        / N**3
+    )
     e_plus = a + _W * b + _W * _W * c
     e_minus = a + _W * _W * b + _W * c
     return (
@@ -442,12 +456,13 @@ def circulation_invariants(
             f"circulation_invariants requires N divisible by period, got "
             f"N={N}, period={period}."
         )
+    ramp = _arm_ramp(N, period)
     chirality = 0.0
     coherence = 0.0
     for perm, signs, det in CUBIC_OPS:
-        raw_chi, raw_coh = _raw(_apply_cubic_op(sub, perm, signs), N, period)
-        chirality += det * raw_chi
-        coherence += raw_coh
+        arm_chi, arm_coh = _project_arm(_apply_cubic_op(sub, perm, signs), ramp, N)
+        chirality += det * arm_chi
+        coherence += arm_coh
     return CirculationInvariants(
         float(chirality / len(CUBIC_OPS)),
         float(coherence / len(CUBIC_OPS)),
