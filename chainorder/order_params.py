@@ -7,6 +7,7 @@ exact shape is direction-specific: ``(Ny, Nz, Nx)`` for x, ``(Nx, Nz,
 Ny)`` for y, ``(Nx, Ny, Nz)`` for z. In the cubic case all three reduce
 to ``(N, N, N)``.
 """
+import itertools
 from typing import NamedTuple
 
 import numpy as np
@@ -266,6 +267,64 @@ def structure_factor(occupation: SublatticeOccupation) -> np.ndarray:
 
 
 _W = np.exp(2j * np.pi / 3)  # omega: primitive cube root of unity
+
+
+def _make_cubic_ops() -> list[tuple[tuple[int, ...], tuple[int, ...], int]]:
+    """The 48 cubic point operations as ``(perm, signs, det)``.
+
+    ``perm[d]`` is the old axis that new axis ``d`` reads from; ``signs[d]`` is
+    the sign applied on new axis ``d``; ``det`` is ``+1`` for proper operations
+    and ``-1`` for improper. Six axis permutations times eight sign patterns.
+    """
+    ops: list[tuple[tuple[int, ...], tuple[int, ...], int]] = []
+    for perm in itertools.permutations(range(3)):
+        matrix = np.zeros((3, 3), dtype=int)
+        for new_axis, old_axis in enumerate(perm):
+            matrix[new_axis, old_axis] = 1
+        for signs in itertools.product((1, -1), repeat=3):
+            det = int(round(float(np.linalg.det(matrix * np.array(signs)))))
+            ops.append((perm, signs, det))
+    return ops
+
+
+CUBIC_OPS = _make_cubic_ops()
+
+
+def _apply_cubic_op(
+    occupation: np.ndarray,
+    perm: tuple[int, ...],
+    signs: tuple[int, ...],
+) -> np.ndarray:
+    """Offset-aware action of a cubic point operation on the anion sublattices.
+
+    Acts on a ``(3, N, N, N)`` occupancy whose three sublattices carry the x-,
+    y- and z-bond anions, each sited at an edge midpoint (half-integer along its
+    own bond axis). ``perm[d]`` is the old axis feeding new axis ``d``;
+    ``signs[d]`` is the sign on new axis ``d``. A sign flip reflects the grid as
+    ``c -> N - 1 - c`` on the moved sublattice's own (half-integer) axis and
+    ``c -> -c mod N`` on the other (integer) axes -- the half-cell offset is what
+    distinguishes the two flavours.
+
+    Args:
+        occupation: ``(3, N, N, N)`` integer occupancy grid.
+        perm: Axis permutation; ``perm[d]`` is the old axis feeding new axis ``d``.
+        signs: Per-new-axis signs, each ``+1`` or ``-1``.
+
+    Returns:
+        The transformed ``(3, N, N, N)`` grid.
+    """
+    inv = [perm.index(src) for src in range(3)]  # inv[src] = new axis d, perm[d] == src
+    out = np.empty_like(occupation)
+    for s_new in range(3):
+        s_old = perm[s_new]
+        slab = occupation[s_old]
+        for src in range(3):
+            if signs[inv[src]] == -1:
+                slab = np.flip(slab, axis=src)
+                if src != s_old:
+                    slab = np.roll(slab, 1, axis=src)
+        out[s_new] = slab.transpose(perm)
+    return out
 
 
 def _rot120(d: tuple[int, int, int]) -> np.ndarray:

@@ -751,3 +751,72 @@ def test_circulation_invariants_unequal_amplitudes():
     np.testing.assert_allclose(out.chirality, 1.0 / 9.0, atol=1e-10)
     np.testing.assert_allclose(out.coherence, 5.0 / 27.0, atol=1e-10)
 
+
+def _apply_cubic_op_loop(occ, perm, signs):
+    """Triple-loop reference for ``order_params._apply_cubic_op`` (breadth
+    oracle). Obviously correct by explicit gather; used only to validate the
+    vectorised production version across all 48 ops on random input. Layer 1
+    independently pins three of these ops by hand, so the loop is trusted for
+    breadth, not as the source of truth for the offset convention.
+    """
+    N = occ.shape[1]
+    out = np.empty_like(occ)
+    for s_new in range(3):
+        s_old = perm[s_new]
+        for i, j, k in np.ndindex(N, N, N):
+            new = (i, j, k)
+            old = [0, 0, 0]
+            for d in range(3):
+                src = perm[d]
+                if signs[d] == 1:
+                    old[src] = new[d]
+                elif src == s_old:
+                    old[src] = (N - 1 - new[d]) % N
+                else:
+                    old[src] = (-new[d]) % N
+            out[s_new, i, j, k] = occ[s_old, old[0], old[1], old[2]]
+    return out
+
+
+@pytest.mark.parametrize("N", [3, 4, 5])
+def test_apply_cubic_op_vectorised_matches_loop(N):
+    """The vectorised ``_apply_cubic_op`` equals the triple-loop reference for
+    all 48 cubic point operations on random input."""
+    rng = np.random.default_rng(0)
+    occ = rng.integers(0, 5, size=(3, N, N, N))
+    for perm, signs, _det in order_params.CUBIC_OPS:
+        np.testing.assert_array_equal(
+            order_params._apply_cubic_op(occ, perm, signs),
+            _apply_cubic_op_loop(occ, perm, signs),
+            err_msg=f"perm={perm} signs={signs} N={N}",
+        )
+
+
+def test_apply_cubic_op_single_anion_destinations():
+    """A single anion under three hand-derived ops, pinning the offset
+    convention directly. N = 4 so the two flip flavours differ (N-1-i vs
+    -i mod N). This is the only test that distinguishes the offset-aware action
+    from an offset-naive one: the projection-level tests cannot, because the
+    half-cell phases cancel at the symmetric (1, 1, 1) arm.
+    """
+    N = 4
+    # (sublattice, site, perm, signs, expected (sublattice, i, j, k))
+    cases = [
+        # Physical inversion: own-axis flip (1 -> 2) AND perpendicular flip
+        # (1 -> 3) in one op. Offset-naive would give (0, 3, 3, 0); a
+        # perpendicular branch that forgot the minus would give (0, 2, 1, 0).
+        (0, (1, 1, 0), (0, 1, 2), (-1, -1, -1), (0, 2, 3, 0)),
+        # Pure transposition: relabel x-bond -> y-bond plus the axis swap, no
+        # flips. The control with no offset subtlety.
+        (0, (1, 2, 0), (1, 0, 2), (1, 1, 1), (1, 2, 1, 0)),
+        # Relabel with a flip on the new sublattice's own axis: the N-1-i flip
+        # follows the relabelled sublattice (src == s_old), not a fixed axis.
+        (1, (2, 1, 0), (1, 0, 2), (-1, 1, 1), (0, 2, 2, 0)),
+    ]
+    for s, site, perm, signs, expected in cases:
+        occ = np.zeros((3, N, N, N), dtype=int)
+        occ[s][site] = 1
+        out = order_params._apply_cubic_op(occ, perm, signs)
+        found = tuple(int(x) for x in np.argwhere(out == 1)[0])
+        assert found == expected, f"perm={perm} signs={signs}: {found} != {expected}"
+
