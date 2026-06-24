@@ -632,15 +632,18 @@ def test_circulation_invariants_flips_under_reflection(shape):
 def test_circulation_invariants_invariant_under_physical_ops(shape):
     """The parameter transforms as a pseudoscalar and a scalar under the 48
     physical cubic operations: chirality flips with the operation's determinant
-    and coherence is invariant. Asserted relative to the unmoved helix, so it
-    pins this transformation contract rather than the 1/4 normalisation.
+    and coherence is invariant. The input is moved with the independent
+    geometric action, not the production operation, so a wrong offset convention
+    would break the relation rather than be hidden by the projector's own group
+    closure. Asserted relative to the unmoved helix, so it pins the
+    transformation contract, not the 1/4 normalisation.
     """
     N = shape[0]
     occ = single_q_111(N, period=3, sense=1)
     ref = order_params.circulation_invariants(occ, period=3)
     for perm, signs, det in order_params.CUBIC_OPS:
         moved = SublatticeOccupation(
-            occupation=order_params._apply_cubic_op(occ.occupation, perm, signs)
+            occupation=_apply_cubic_op_geometric(occ.occupation, perm, signs)
         )
         out = order_params.circulation_invariants(moved, period=3)
         np.testing.assert_allclose(

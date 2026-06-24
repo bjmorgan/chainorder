@@ -280,8 +280,8 @@ Three concrete cases, all with `period=3`:
 The symmetry average acts on the anion sites as they sit physically -- at
 the edge midpoints, half-integer along their own bond axis -- so a
 reflection treats a sublattice's own axis differently from the others; this
-is what makes `chirality` correctly invariant under the lattice symmetry. It
-remains configurational: it depends only on which species sits on which
+is what makes the invariants transform correctly under the lattice symmetry.
+It remains configurational: it depends only on which species sits on which
 site, not on where the atoms physically relax.
 
 `circulation_invariants` takes a `SublatticeOccupation` directly. It
