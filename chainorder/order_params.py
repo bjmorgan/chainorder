@@ -7,6 +7,8 @@ exact shape is direction-specific: ``(Ny, Nz, Nx)`` for x, ``(Nx, Nz,
 Ny)`` for y, ``(Nx, Ny, Nz)`` for z. In the cubic case all three reduce
 to ``(N, N, N)``.
 """
+from typing import NamedTuple
+
 import numpy as np
 
 from chainorder.decompose import SublatticeOccupation
@@ -261,3 +263,92 @@ def structure_factor(occupation: SublatticeOccupation) -> np.ndarray:
     phase_z = np.exp(-1j * np.pi * kz[None, None, :] / Nz)
 
     return (f[0] * phase_x + f[1] * phase_y + f[2] * phase_z) / (Nx * Ny * Nz)
+
+
+class CirculationInvariants(NamedTuple):
+    """The two <111> circulation invariants, summed over the four arms.
+
+    Attributes:
+        chirality: ``|E+|^2 - |E-|^2`` -- the circulation imbalance
+            (a pseudoscalar; its sign is the screw sense). Flips under any
+            improper lattice operation, is invariant under proper rotations,
+            and is ~0 for achiral or disordered input.
+        coherence: ``|E+|^2 + |E-|^2`` -- the <111> ordering strength
+            (``>= 0``). Invariant under the full cubic point group.
+    """
+
+    chirality: float
+    coherence: float
+
+
+def circulation_invariants(
+    occupation: SublatticeOccupation, *, period: int
+) -> CirculationInvariants:
+    """Chirality and coherence of the <111> anion ordering.
+
+    On the ReO3 anion sublattice the three edge sublattices (x-, y-, z-bond)
+    carry density waves. At the body-diagonal wavevector ``k = (N/period) *
+    (1, 1, 1)`` the 3-fold about <111> cyclically permutes them, so their
+    amplitudes split into a symmetric A1 part and a two-dimensional circular
+    part (the E doublet, components ``E+`` and ``E-``). With ``omega =
+    exp(2j*pi/3)`` and the three sublattice amplitudes ``a, b, c`` ordered by
+    the arm's cycle,
+
+        E+ = a + omega*b + omega**2*c
+        E- = a + omega**2*b + omega*c
+
+    and the two invariants are ``chirality = |E+|^2 - |E-|^2`` (a pseudoscalar)
+    and ``coherence = |E+|^2 + |E-|^2``, each summed over the four <111> arms
+    ``(1,1,1)``, ``(1,1,-1)``, ``(1,-1,1)``, ``(-1,1,1)`` (one representative
+    per +/-q pair).
+
+    The amplitudes are offset-naive -- a plain FFT of the occupancy grid, with
+    no half-cell site-position phases. The chirality is configurational: it
+    depends only on which species occupies which site, so the site labels
+    alone carry it. The FFT is divided by ``Nx*Ny*Nz``, the same normalisation
+    as ``chain_fft`` and ``structure_factor``, so the invariants are intensive:
+    the perfect single-q <111> helix gives ``chirality = coherence = 1/3`` at
+    every N.
+
+    Args:
+        occupation: ``SublatticeOccupation`` whose ``.occupation`` has shape
+            ``(3, N, N, N)``. Must be cubic.
+        period: Target <111> repeat length. Keyword-only, an integer ``>= 2``.
+            N must be divisible by ``period``. ``period = 2`` is a degenerate
+            zone-boundary case (``+q`` and ``-q`` coincide, so ``chirality`` is
+            identically 0); the intended use is ``period = 3``.
+
+    Returns:
+        ``CirculationInvariants(chirality, coherence)``. Both intensive
+        (L-independent).
+
+    Raises:
+        ValueError: If ``.occupation`` is not 4-D with leading axis 3; if the
+            cell is not cubic (``Nx == Ny == Nz``); or if ``period`` is not an
+            integer ``>= 2`` dividing N.
+    """
+    sub = occupation.occupation
+    if sub.ndim != 4 or sub.shape[0] != 3:
+        raise ValueError(
+            f"SublatticeOccupation.occupation must have shape "
+            f"(3, Nx, Ny, Nz); got shape {sub.shape}."
+        )
+    _, Nx, Ny, Nz = sub.shape
+    if not (Nx == Ny == Nz):
+        raise ValueError(
+            f"circulation_invariants requires a cubic cell (Nx == Ny == Nz); "
+            f"got ({Nx}, {Ny}, {Nz}). The <111> 3-fold and the body-diagonal "
+            f"wavevector exist only for a cubic supercell."
+        )
+    N = Nx
+    if not isinstance(period, (int, np.integer)) or period < 2:
+        raise ValueError(
+            f"period must be an integer >= 2, got {period!r}."
+        )
+    if N % period != 0:
+        raise ValueError(
+            f"circulation_invariants requires N divisible by period, got "
+            f"N={N}, period={period}."
+        )
+    # Physics added in Task 2 (single arm) and generalised in Task 3.
+    return CirculationInvariants(float("nan"), float("nan"))

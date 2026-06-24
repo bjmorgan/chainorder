@@ -577,3 +577,34 @@ def test_structure_factor_rejects_malformed_occupation_shape():
         order_params.structure_factor(bad_rank)
 
 
+def test_circulation_invariants_rejects_non_cubic():
+    """The <111> 3-fold exists only for a cubic cell; non-cubic must raise."""
+    occ = SublatticeOccupation(occupation=np.zeros((3, 2, 3, 4), dtype=int))
+    with pytest.raises(ValueError, match="cubic"):
+        order_params.circulation_invariants(occ, period=3)
+
+
+def test_circulation_invariants_rejects_period_below_2():
+    """period < 2 (and non-integer) is rejected before it can index off-grid."""
+    occ = SublatticeOccupation(occupation=np.zeros((3, 6, 6, 6), dtype=int))
+    for bad in (1, 0, -1, 2.5):
+        with pytest.raises(ValueError, match="period must be an integer >= 2"):
+            order_params.circulation_invariants(occ, period=bad)  # type: ignore[arg-type]
+
+
+def test_circulation_invariants_rejects_period_not_dividing_N():
+    """N=6 has no clean period-4 <111> harmonic."""
+    occ = SublatticeOccupation(occupation=np.zeros((3, 6, 6, 6), dtype=int))
+    with pytest.raises(ValueError, match="divisible by period"):
+        order_params.circulation_invariants(occ, period=4)
+
+
+def test_circulation_invariants_rejects_malformed_occupation():
+    """.occupation must be 4-D with leading axis of length 3."""
+    bad_leading = SublatticeOccupation(occupation=np.zeros((2, 4, 4, 4), dtype=int))
+    with pytest.raises(ValueError, match=r"shape \(3, Nx, Ny, Nz\)"):
+        order_params.circulation_invariants(bad_leading, period=3)
+    bad_rank = SublatticeOccupation(occupation=np.zeros((3, 4, 4), dtype=int))
+    with pytest.raises(ValueError, match=r"shape \(3, Nx, Ny, Nz\)"):
+        order_params.circulation_invariants(bad_rank, period=3)
+
