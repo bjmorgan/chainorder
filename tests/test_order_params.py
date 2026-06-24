@@ -712,6 +712,56 @@ def test_circulation_invariants_unequal_amplitudes():
     np.testing.assert_allclose(out.coherence, 5.0 / 36.0, atol=1e-10)
 
 
+def test_arm_ramp_matches_explicit_grid():
+    """_arm_ramp(N, period) is exp(-2j pi (x + y + z) / period) on the grid."""
+    N, period = 6, 3
+    ramp = order_params._arm_ramp(N, period)
+    expected = np.empty((N, N, N), dtype=complex)
+    for x in range(N):
+        for y in range(N):
+            for z in range(N):
+                expected[x, y, z] = np.exp(-2j * np.pi * (x + y + z) / period)
+    np.testing.assert_allclose(ramp, expected, atol=1e-12)
+
+
+def _circulation_invariants_fft(occupation, *, period):
+    """Full-FFT reference for circulation_invariants.
+
+    Differs from production only in the arm read -- a full ``fftn`` bin rather
+    than the single-k projection, the one step single-k changed -- so the
+    equivalence sweep checks that read against an independent computation.
+    """
+    sub = occupation.occupation
+    N = sub.shape[1]
+    idx = (N // period,) * 3
+    chirality = 0.0
+    coherence = 0.0
+    for perm, signs, det in order_params.CUBIC_OPS:
+        moved = order_params._apply_cubic_op(sub, perm, signs)
+        f = np.fft.fftn(moved.astype(float), axes=(1, 2, 3)) / N**3
+        a, b, c = f[0][idx], f[1][idx], f[2][idx]
+        e_plus = a + order_params._W * b + order_params._W * order_params._W * c
+        e_minus = a + order_params._W * order_params._W * b + order_params._W * c
+        chirality += det * (abs(e_plus) ** 2 - abs(e_minus) ** 2)
+        coherence += abs(e_plus) ** 2 + abs(e_minus) ** 2
+    return order_params.CirculationInvariants(
+        chirality / len(order_params.CUBIC_OPS),
+        coherence / len(order_params.CUBIC_OPS),
+    )
+
+
+@pytest.mark.parametrize("N, period", [(6, 3), (9, 3), (12, 3), (12, 4)])
+def test_circulation_invariants_matches_fft_reference(N, period):
+    """Single-k production equals the full-FFT reference within atol=1e-10 on
+    random input, at several N and two periods."""
+    rng = np.random.default_rng(0)
+    occ = SublatticeOccupation(occupation=rng.integers(0, 2, size=(3, N, N, N)))
+    single_k = order_params.circulation_invariants(occ, period=period)
+    reference = _circulation_invariants_fft(occ, period=period)
+    np.testing.assert_allclose(single_k.chirality, reference.chirality, atol=1e-10)
+    np.testing.assert_allclose(single_k.coherence, reference.coherence, atol=1e-10)
+
+
 def _apply_cubic_op_geometric(occ, perm, signs):
     """Independent reference for ``order_params._apply_cubic_op``, derived from
     the anion site geometry rather than transcribing the production logic.
