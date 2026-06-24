@@ -698,11 +698,12 @@ def test_circulation_invariants_rotation_and_improper(shape):
         )
 
 
-@pytest.mark.parametrize("shape", CUBIC_SHAPES)
-def test_circulation_invariants_random_is_achiral(shape):
-    """Random occupancy: chirality ~ 0 (measured ~0.002 at N=6; generous
-    bound), coherence non-negative."""
-    N = shape[0]
+def test_circulation_invariants_random_is_achiral():
+    """Random occupancy at N=6: chirality ~ 0 (measured ~0.011, well within
+    the generous bound), coherence non-negative. N=3 is excluded -- its
+    fluctuation can exceed the bound across seeds, so the achirality of random
+    input is only meaningful at N >= 6."""
+    N = 6
     rng = np.random.default_rng(0)
     occ = SublatticeOccupation(occupation=rng.integers(0, 2, size=(3, N, N, N)))
     out = order_params.circulation_invariants(occ, period=3)
@@ -731,4 +732,22 @@ def test_circulation_invariants_period_2_is_achiral_at_zone_boundary():
     occ = SublatticeOccupation(occupation=rng.integers(0, 2, size=(3, N, N, N)))
     out = order_params.circulation_invariants(occ, period=2)
     np.testing.assert_allclose(out.chirality, 0.0, atol=1e-10)
+
+
+def test_circulation_invariants_unequal_amplitudes():
+    """Chirality at an asymmetric point: two sublattices carry the full helix
+    and the third is empty, so |f_0| = |f_1| but |f_2| = 0. Every other
+    nonzero-chirality test sits at the symmetric |a| = |b| = |c| point of
+    single_q_111, whereas real trajectories are partial, unequal-amplitude
+    ordering -- the regime where a wrong amplitude-to-sublattice pairing would
+    hide. Analytic values for this construction: chirality = 1/9, coherence =
+    5/27."""
+    N = 6
+    occ = single_q_111(N, period=3, sense=1).occupation.copy()
+    occ[2] = 0
+    out = order_params.circulation_invariants(
+        SublatticeOccupation(occupation=occ), period=3
+    )
+    np.testing.assert_allclose(out.chirality, 1.0 / 9.0, atol=1e-10)
+    np.testing.assert_allclose(out.coherence, 5.0 / 27.0, atol=1e-10)
 
