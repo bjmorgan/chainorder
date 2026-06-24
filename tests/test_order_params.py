@@ -697,3 +697,38 @@ def test_circulation_invariants_rotation_and_improper(shape):
             err_msg=f"chirality wrong under det={det} op M=\n{M}",
         )
 
+
+@pytest.mark.parametrize("shape", CUBIC_SHAPES)
+def test_circulation_invariants_random_is_achiral(shape):
+    """Random occupancy: chirality ~ 0 (measured ~0.002 at N=6; generous
+    bound), coherence non-negative."""
+    N = shape[0]
+    rng = np.random.default_rng(0)
+    occ = SublatticeOccupation(occupation=rng.integers(0, 2, size=(3, N, N, N)))
+    out = order_params.circulation_invariants(occ, period=3)
+    assert abs(out.chirality) < 0.05
+    assert out.coherence >= 0.0
+
+
+def test_circulation_invariants_centrosymmetric_is_achiral():
+    """A centrosymmetric pattern (occ_s(r) = occ_s(-r)) has chirality 0."""
+    N = 6
+    rng = np.random.default_rng(1)
+    half = rng.integers(0, 2, size=(3, N, N, N))
+    # inv (below) is rho(-r): reflect every spatial axis by i -> (-i) mod N.
+    # The elementwise max of rho(r) and rho(-r) is centrosymmetric and binary.
+    inv = np.roll(np.flip(half, axis=(1, 2, 3)), shift=1, axis=(1, 2, 3))
+    occ = SublatticeOccupation(occupation=np.maximum(half, inv))
+    out = order_params.circulation_invariants(occ, period=3)
+    np.testing.assert_allclose(out.chirality, 0.0, atol=1e-10)
+
+
+def test_circulation_invariants_period_2_is_achiral_at_zone_boundary():
+    """period = 2: the <111> wavevector is its own negative, so |E+| == |E-|
+    and chirality is identically 0 for any input."""
+    N = 6
+    rng = np.random.default_rng(2)
+    occ = SublatticeOccupation(occupation=rng.integers(0, 2, size=(3, N, N, N)))
+    out = order_params.circulation_invariants(occ, period=2)
+    np.testing.assert_allclose(out.chirality, 0.0, atol=1e-10)
+
