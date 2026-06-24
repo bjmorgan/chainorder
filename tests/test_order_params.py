@@ -6,6 +6,7 @@ from tests._fixtures import (
     perfect_oof_chain,
     perfect_ofof_chain,
     occupation_from_chain_arrays,
+    single_q_111,
     SHAPES,
 )
 
@@ -607,4 +608,24 @@ def test_circulation_invariants_rejects_malformed_occupation():
     bad_rank = SublatticeOccupation(occupation=np.zeros((3, 4, 4), dtype=int))
     with pytest.raises(ValueError, match=r"shape \(3, Nx, Ny, Nz\)"):
         order_params.circulation_invariants(bad_rank, period=3)
+
+
+@pytest.mark.parametrize("shape", CUBIC_SHAPES)
+def test_circulation_invariants_flips_under_reflection(shape):
+    """Reference vs its inversion partner: chirality negates, coherence holds.
+
+    The perfect single-q <111> helix gives chirality = coherence = 1/3 at
+    every N (intensive); its mirror gives -1/3 / 1/3.
+    """
+    N = shape[0]
+    ref = order_params.circulation_invariants(
+        single_q_111(N, period=3, sense=1), period=3
+    )
+    mirror = order_params.circulation_invariants(
+        single_q_111(N, period=3, sense=-1), period=3
+    )
+    np.testing.assert_allclose(ref.chirality, 1.0 / 3.0, atol=1e-10)
+    np.testing.assert_allclose(ref.coherence, 1.0 / 3.0, atol=1e-10)
+    np.testing.assert_allclose(mirror.chirality, -1.0 / 3.0, atol=1e-10)
+    np.testing.assert_allclose(mirror.coherence, 1.0 / 3.0, atol=1e-10)
 

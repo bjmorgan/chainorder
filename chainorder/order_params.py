@@ -265,6 +265,45 @@ def structure_factor(occupation: SublatticeOccupation) -> np.ndarray:
     return (f[0] * phase_x + f[1] * phase_y + f[2] * phase_z) / (Nx * Ny * Nz)
 
 
+_W = np.exp(2j * np.pi / 3)  # omega: primitive cube root of unity
+
+
+def _rot120(d: tuple[int, int, int]) -> np.ndarray:
+    """+120 degree right-handed rotation matrix about body diagonal ``d``.
+
+    Rodrigues' formula at 120 degrees, rounded to the integer lattice
+    operation. Used only to build ``_ARMS`` at import.
+    """
+    n = np.array(d, dtype=float)
+    n /= np.linalg.norm(n)
+    c, s = -0.5, np.sqrt(3) / 2
+    K = np.array([[0, -n[2], n[1]], [n[2], 0, -n[0]], [-n[1], n[0], 0]])
+    return np.rint(c * np.eye(3) + s * K + (1 - c) * np.outer(n, n)).astype(int)
+
+
+def _cycle(R: np.ndarray) -> list[int]:
+    """Sublattice 3-cycle induced by rotation matrix ``R``.
+
+    Returns ``[0, p[0], p[p[0]]]`` -- the orbit of sublattice 0 under the
+    axis permutation ``p``, where ``p[a]`` is the axis that ``R`` sends
+    axis ``a`` to.
+    """
+    p = [int(np.argmax(np.abs(R[:, a]))) for a in range(3)]
+    return [0, p[0], p[p[0]]]
+
+
+# One representative per +/-q pair of the four <111> arms, each paired with
+# the +120 degree right-handed sublattice cycle it induces.
+_ARMS = [
+    (d, _cycle(_rot120(d)))
+    for d in [(1, 1, 1), (1, 1, -1), (1, -1, 1), (-1, 1, 1)]
+]
+# Fail fast at import if rounding ever drifts a rotation off a clean permutation.
+assert all(sorted(cy) == [0, 1, 2] for _, cy in _ARMS), (
+    f"_ARMS cycles are not permutations of (0, 1, 2): {_ARMS}"
+)
+
+
 class CirculationInvariants(NamedTuple):
     """The two <111> circulation invariants, summed over the four arms.
 
@@ -350,5 +389,13 @@ def circulation_invariants(
             f"circulation_invariants requires N divisible by period, got "
             f"N={N}, period={period}."
         )
-    # Physics added in Task 2 (single arm) and generalised in Task 3.
-    return CirculationInvariants(float("nan"), float("nan"))
+    f = np.fft.fftn(sub.astype(float), axes=(1, 2, 3)) / (N * N * N)  # offset-naive
+    d, cy = _ARMS[0]  # (1,1,1) arm only; all four arms summed in Task 3
+    idx = tuple((N // period) if x == 1 else (N - N // period) for x in d)
+    g = [f[0][idx], f[1][idx], f[2][idx]]
+    a, b, c = g[cy[0]], g[cy[1]], g[cy[2]]
+    e_plus = a + _W * b + _W * _W * c
+    e_minus = a + _W * _W * b + _W * c
+    chirality = (abs(e_plus) ** 2 - abs(e_minus) ** 2) / 3
+    coherence = (abs(e_plus) ** 2 + abs(e_minus) ** 2) / 3
+    return CirculationInvariants(float(chirality), float(coherence))

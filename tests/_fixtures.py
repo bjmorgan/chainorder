@@ -167,6 +167,30 @@ def dummy_chain_arrays(
     )
 
 
+def single_q_111(
+    N: int,
+    *,
+    period: int,
+    sense: int = 1,
+) -> "SublatticeOccupation":
+    """Single-q <111> chiral reference as a SublatticeOccupation.
+
+    Sublattice ``s`` in ``{0, 1, 2}`` carries a period-``period`` density wave
+    along the body diagonal, phase-offset by ``s``:
+
+        occ_s(x, y, z) = 1 where (x + y + z) % period == (sense * s) % period
+
+    ``sense=+1`` is the chiral reference; ``sense=-1`` is its inversion partner
+    (phase ``-s``) -- the opposite-handed helix. Cubic, material-free.
+    """
+    from chainorder.decompose import SublatticeOccupation
+    triad = np.indices((N, N, N)).sum(axis=0)            # (N, N, N): x + y + z
+    occ = np.zeros((3, N, N, N), dtype=np.int64)
+    for s in range(3):
+        occ[s] = (triad % period == (sense * s) % period).astype(np.int64)
+    return SublatticeOccupation(occupation=occ)
+
+
 def occupation_from_chain_arrays(
     shape: tuple[int, int, int],
     x: np.ndarray | None = None,
